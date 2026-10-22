@@ -3,18 +3,21 @@ package com.soulsvault.network;
 import com.soulsvault.Constants;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.platform.Services;
+import com.soulsvault.world.entity.SpectralCasketEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
 import javax.annotation.Nullable;
+import java.util.List;
 
 /**
  * Client-to-Server request to open the player's Casket of Echoes vault.
  * Validates that the player is within 6 blocks of a {@code #soulsvault:rest_points} block
- * when {@code restPos} is provided, then initiates chunked vault synchronization.
+ * or an active {@link SpectralCasketEntity}, then initiates chunked vault synchronization.
  */
 public final class PacketC2SOpenVault {
     @Nullable
@@ -53,13 +56,24 @@ public final class PacketC2SOpenVault {
                 return;
             }
             BlockState state = player.level().getBlockState(this.restPos);
-            if (!state.is(Constants.REST_POINTS_TAG)) {
+            if (!state.is(Constants.REST_POINTS_TAG) && !hasNearbySpectralCasket(player)) {
                 Constants.LOG.debug("Block {} at {} is not in #soulsvault:rest_points", state.getBlock(), this.restPos);
                 return;
             }
+        } else if (!hasNearbySpectralCasket(player)) {
+            return;
         }
 
         PlayerVaultData vaultData = Services.PLATFORM.getPlayerVaultData(player);
         Services.PLATFORM.syncFullVaultToClient(player, vaultData);
+    }
+
+    private static boolean hasNearbySpectralCasket(ServerPlayer player) {
+        List<SpectralCasketEntity> caskets = player.level().getEntitiesOfClass(
+                SpectralCasketEntity.class,
+                player.getBoundingBox().inflate(Constants.REST_POINT_REACH_BLOCKS),
+                Entity::isAlive
+        );
+        return !caskets.isEmpty();
     }
 }
