@@ -1,0 +1,184 @@
+package com.soulsvault.core;
+
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+
+import javax.annotation.Nullable;
+import java.util.Objects;
+import java.util.Optional;
+
+/**
+ * Immutable deduplication key encapsulating {@code (Item, Optional<CompoundTag>)} with a precomputed hash.
+ * <p>
+ * Isolates all {@link CompoundTag} identity checks in one place for forward compatibility with
+ * Minecraft 1.21+ {@code DataComponentPatch}. Preserves full NBT for Armourer's Workshop skins,
+ * Apotheosis affixes, and Epic Fight innate skills.
+ */
+public final class ItemKey {
+    public static final ItemKey EMPTY = new ItemKey(Items.AIR, null);
+
+    private static final String NBT_ITEM = "Item";
+    private static final String NBT_TAG = "Tag";
+
+    private final Item item;
+    @Nullable
+    private final CompoundTag tag;
+    private final int cachedHash;
+
+    public ItemKey(Item item, @Nullable CompoundTag tag) {
+        this.item = Objects.requireNonNull(item, "item cannot be null");
+        this.tag = (tag == null || tag.isEmpty()) ? null : tag.copy();
+        this.cachedHash = computeHash(this.item, this.tag);
+    }
+
+    private static int computeHash(Item item, @Nullable CompoundTag tag) {
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
+        return 31 * id.hashCode() + (tag != null ? tag.hashCode() : 0);
+    }
+
+    public static ItemKey fromStack(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return EMPTY;
+        }
+        return new ItemKey(stack.getItem(), stack.getTag());
+    }
+
+    public boolean isEmpty() {
+        return this.item == Items.AIR;
+    }
+
+    public Item getItem() {
+        return this.item;
+    }
+
+    public ResourceLocation getRegistryId() {
+        return BuiltInRegistries.ITEM.getKey(this.item);
+    }
+
+    public String getNamespace() {
+        return getRegistryId().getNamespace();
+    }
+
+    public boolean hasTag() {
+        return this.tag != null;
+    }
+
+    /**
+     * Returns a defensive copy of the underlying NBT tag, or {@code null} if none is present.
+     */
+    @Nullable
+    public CompoundTag getTag() {
+        return this.tag != null ? this.tag.copy() : null;
+    }
+
+    /**
+     * Returns an {@link Optional} containing a defensive copy of the underlying NBT tag.
+     */
+    public Optional<CompoundTag> getOptionalTag() {
+        return Optional.ofNullable(getTag());
+    }
+
+    /**
+     * Creates a new {@link ItemStack} with the given count and a cloned copy of this key's NBT tag.
+     */
+    public ItemStack toStack(int count) {
+        if (isEmpty() || count <= 0) {
+            return ItemStack.EMPTY;
+        }
+        ItemStack stack = new ItemStack(this.item, count);
+        if (this.tag != null) {
+            stack.setTag(this.tag.copy());
+        }
+        return stack;
+    }
+
+    public ItemStack toSingleStack() {
+        return toStack(1);
+    }
+
+    /**
+     * Fast check whether an {@link ItemStack} matches this key without cloning NBT.
+     */
+    public boolean matches(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return isEmpty();
+        }
+        if (stack.getItem() != this.item) {
+            return false;
+        }
+        CompoundTag stackTag = stack.getTag();
+        if (stackTag == null || stackTag.isEmpty()) {
+            return this.tag == null;
+        }
+        return Objects.equals(this.tag, stackTag);
+    }
+
+    public CompoundTag toTag() {
+        CompoundTag out = new CompoundTag();
+        out.putString(NBT_ITEM, getRegistryId().toString());
+        if (this.tag != null) {
+            out.put(NBT_TAG, this.tag.copy());
+        }
+        return out;
+    }
+
+    public static ItemKey fromTag(CompoundTag nbt) {
+        if (nbt == null || !nbt.contains(NBT_ITEM)) {
+            return EMPTY;
+        }
+        ResourceLocation id = ResourceLocation.tryParse(nbt.getString(NBT_ITEM));
+        if (id == null) {
+            return EMPTY;
+        }
+        Item item = BuiltInRegistries.ITEM.getOptional(id).orElse(Items.AIR);
+        if (item == Items.AIR) {
+            return EMPTY;
+        }
+        CompoundTag itemTag = nbt.contains(NBT_TAG, CompoundTag.TAG_COMPOUND)
+                ? nbt.getCompound(NBT_TAG)
+                : null;
+        return new ItemKey(item, itemTag);
+    }
+
+    public void toNetwork(FriendlyByteBuf buf) {
+        buf.writeId(BuiltInRegistries.ITEM, this.item);
+        buf.writeNbt(this.tag);
+    }
+
+    public static ItemKey fromNetwork(FriendlyByteBuf buf) {
+        Item item = buf.readById(BuiltInRegistries.ITEM);
+        CompoundTag tag = buf.readNbt();
+        if (item == null || item == Items.AIR) {
+            return EMPTY;
+        }
+        return new ItemKey(item, tag);
+    }
+
+    @Override
+    public int hashCode() {
+        return this.cachedHash;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (!(obj instanceof ItemKey other)) {
+            return false;
+        }
+        return this.cachedHash == other.cachedHash
+                && this.item == other.item
+                && Objects.equals(this.tag, other.tag);
+    }
+
+    @Override
+    public String toString() {
+        return "ItemKey{" + getRegistryId() + (this.tag != null ? ", hasTag=true" : "") + "}";
+    }
+}
