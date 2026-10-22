@@ -16,6 +16,8 @@ public final class Constants {
     public static final int MAX_SYNC_CHUNK_SIZE = 100;
     public static final long DEFAULT_MAX_STACK_CAPACITY = 9999L;
     public static final int MAX_BUILD_ECHOES = 5;
+    public static final int VESTIGE_MOTH_XP_LEVEL_COST = 1;
+    public static final int SPECTRAL_CASKET_LIFETIME_TICKS = 60 * 20;
     public static final double REST_POINT_REACH_BLOCKS = 6.0D;
     public static final double REST_POINT_REACH_SQR = REST_POINT_REACH_BLOCKS * REST_POINT_REACH_BLOCKS;
 

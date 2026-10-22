@@ -3,6 +3,7 @@
   "gui.soulsvault.subtitle.inventory": "Carried Equipment & Inventory",
   "gui.soulsvault.subtitle.vault": "Stored Echoes",
   "gui.soulsvault.subtitle.inspect": "Item Lore & Attributes",
+  "gui.soulsvault.subtitle.echoes": "Build Echoes (Loadout Swapper)",
   "gui.soulsvault.category.weapons": "Weapons",
   "gui.soulsvault.category.ranged_ammo": "Ranged & Ammo",
   "gui.soulsvault.category.armor": "Armor & Shields",
@@ -21,6 +22,10 @@
   "gui.soulsvault.action.quick_deposit": "Deposit Category",
   "gui.soulsvault.action.inspect_toggle": "[R] Inspect",
   "gui.soulsvault.action.grid_toggle": "[R] Vault Grid",
+  "gui.soulsvault.action.echoes_open": "[B] Build Echoes",
+  "gui.soulsvault.action.echoes_close": "[B] Inventory",
+  "gui.soulsvault.action.echo_save": "Save",
+  "gui.soulsvault.action.echo_load": "Swap",
   "gui.soulsvault.action.filter_cat": "Filter: Category",
   "gui.soulsvault.action.filter_all": "Filter: All Slots",
   "gui.soulsvault.inspect.empty": "Hover or select an item and press [R] to inspect its attributes and lore.",
@@ -41,5 +46,8 @@
   "gui.soulsvault.toast.overflow": "Sent to Casket (+%s)",
   "gui.soulsvault.toast.replenished": "Replenished from Casket (+%s)",
   "block.soulsvault.bottomless_casket": "Bottomless Casket",
-  "item.soulsvault.vestige_moth": "Vestige Moth"
+  "item.soulsvault.vestige_moth": "Vestige Moth",
+  "item.soulsvault.vestige_moth.desc": "Summons a temporary 60-second Spectral Casket in the field (Costs %s XP Level).",
+  "item.soulsvault.vestige_moth.no_xp": "Requires at least %s Experience Level to summon a Spectral Casket.",
+  "entity.soulsvault.spectral_casket": "Spectral Casket"
 }

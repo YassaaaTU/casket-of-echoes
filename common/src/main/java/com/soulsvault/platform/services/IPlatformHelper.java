@@ -4,12 +4,17 @@ import com.soulsvault.core.ItemKey;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.core.VaultEntry;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.Vec3;
 
 import javax.annotation.Nullable;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 public interface IPlatformHelper {
 
@@ -55,6 +60,31 @@ public interface IPlatformHelper {
      */
     default List<Component> getExtraInspectionStats(ItemStack stack) {
         return Collections.emptyList();
+    }
+
+    /**
+     * Captures all equipped Curios slot items for a BuildEcho snapshot (soft-dependency on Curios API).
+     */
+    default Map<String, List<ItemKey>> captureCurioSlots(Player player) {
+        return Collections.emptyMap();
+    }
+
+    /**
+     * Atomically swaps equipped Curios slot items with the player's Vault for a BuildEcho preset.
+     */
+    default void swapCurioSlots(
+            ServerPlayer player,
+            PlayerVaultData vaultData,
+            Map<String, List<ItemKey>> desiredCurios,
+            Set<ItemKey> modifiedKeys
+    ) {
+    }
+
+    /**
+     * Spawns a 60-second temporary SpectralCasketEntity in front of the player.
+     */
+    default boolean spawnSpectralCasket(ServerLevel level, Vec3 pos, ServerPlayer owner) {
+        return false;
     }
 
     /**

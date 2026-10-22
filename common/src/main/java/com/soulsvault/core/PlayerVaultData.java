@@ -397,7 +397,8 @@ public class PlayerVaultData {
     }
 
     /**
-     * Saves the player's currently equipped Mainhand, Offhand, and 4 Armor slots into a BuildEcho slot.
+     * Saves the player's currently equipped Mainhand, Offhand, 4 Armor slots, and active Curios slots
+     * into a BuildEcho slot.
      */
     public BuildEcho saveBuildEcho(Player player, int index, String name) {
         int clampedIndex = Math.max(0, Math.min(Constants.MAX_BUILD_ECHOES - 1, index));
@@ -407,8 +408,9 @@ public class PlayerVaultData {
         for (EquipmentSlot slot : ARMOR_SLOTS) {
             armor.put(slot, ItemKey.fromStack(player.getItemBySlot(slot)));
         }
+        Map<String, List<ItemKey>> curios = Services.PLATFORM.captureCurioSlots(player);
 
-        BuildEcho echo = new BuildEcho(clampedIndex, name, mainHand, offHand, armor, Collections.emptyMap());
+        BuildEcho echo = new BuildEcho(clampedIndex, name, mainHand, offHand, armor, curios);
         while (this.buildEchoes.size() <= clampedIndex) {
             int fillIdx = this.buildEchoes.size();
             this.buildEchoes.add(new BuildEcho(
@@ -425,7 +427,7 @@ public class PlayerVaultData {
     }
 
     /**
-     * Atomically swaps the player's worn equipment with the target BuildEcho using the Vault.
+     * Atomically swaps the player's worn equipment and Curios with the target BuildEcho using the Vault.
      */
     public Set<ItemKey> loadBuildEcho(ServerPlayer player, int index) {
         if (index < 0 || index >= this.buildEchoes.size()) {
@@ -439,9 +441,19 @@ public class PlayerVaultData {
         for (EquipmentSlot armorSlot : ARMOR_SLOTS) {
             swapEquipmentSlot(player, armorSlot, echo.getArmor(armorSlot), modifiedKeys);
         }
+        Services.PLATFORM.swapCurioSlots(player, this, echo.getCurioSlots(), modifiedKeys);
 
         if (!modifiedKeys.isEmpty()) {
             player.getInventory().setChanged();
+            player.inventoryMenu.broadcastChanges();
+            player.level().playSound(
+                    null,
+                    player.blockPosition(),
+                    SoundEvents.ARMOR_EQUIP_NETHERITE,
+                    SoundSource.PLAYERS,
+                    0.75F,
+                    0.95F
+            );
         }
         return modifiedKeys;
     }
