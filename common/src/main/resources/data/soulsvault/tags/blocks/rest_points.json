@@ -1,0 +1,40 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:campfire",
+    "minecraft:soul_campfire",
+    "soulsvault:bottomless_casket",
+    {
+      "id": "waystones:waystone",
+      "required": false
+    },
+    {
+      "id": "waystones:mossy_waystone",
+      "required": false
+    },
+    {
+      "id": "waystones:sandy_waystone",
+      "required": false
+    },
+    {
+      "id": "waystones:deepslate_waystone",
+      "required": false
+    },
+    {
+      "id": "waystones:blackstone_waystone",
+      "required": false
+    },
+    {
+      "id": "waystones:end_stone_waystone",
+      "required": false
+    },
+    {
+      "id": "bonfires:ash_bone_pile",
+      "required": false
+    },
+    {
+      "id": "bonfires:coiled_sword",
+      "required": false
+    }
+  ]
+}

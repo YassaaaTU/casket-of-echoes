@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "soulsvault:block/bottomless_casket"
+    },
+    "facing=east": {
+      "model": "soulsvault:block/bottomless_casket",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "soulsvault:block/bottomless_casket",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "soulsvault:block/bottomless_casket",
+      "y": 270
+    }
+  }
+}
