@@ -1,0 +1,15 @@
+{
+  "casket_open": {
+    "subtitle": "block.soulsvault.bottomless_casket",
+    "sounds": [
+      "minecraft:block/enderchest/open"
+    ]
+  },
+  "rest_replenish": {
+    "subtitle": "gui.soulsvault.action.rest_replenish",
+    "sounds": [
+      "minecraft:block/amethyst/chime1",
+      "minecraft:block/amethyst/chime2"
+    ]
+  }
+}

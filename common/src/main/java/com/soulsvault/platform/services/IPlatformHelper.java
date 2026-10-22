@@ -3,10 +3,13 @@ package com.soulsvault.platform.services;
 import com.soulsvault.core.ItemKey;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.core.VaultEntry;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 
 import javax.annotation.Nullable;
+import java.util.Collections;
+import java.util.List;
 
 public interface IPlatformHelper {
 
@@ -44,6 +47,14 @@ public interface IPlatformHelper {
      */
     default boolean isCurioItem(ItemStack stack) {
         return false;
+    }
+
+    /**
+     * Returns additional combat/equipment stat lines for the Item Inspection Pane
+     * (e.g., Epic Fight Weight, Impact, and Innate Skill).
+     */
+    default List<Component> getExtraInspectionStats(ItemStack stack) {
+        return Collections.emptyList();
     }
 
     /**
