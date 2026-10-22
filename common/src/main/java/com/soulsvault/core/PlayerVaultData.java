@@ -34,6 +34,7 @@ public class PlayerVaultData {
     private static final String NBT_ENTRIES = "Entries";
     private static final String NBT_BUILD_ECHOES = "BuildEchoes";
     private static final String NBT_MAX_CAPACITY = "MaxStackCapacity";
+    private static final String NBT_OVERFLOW_ON_FULL = "OverflowOnFullInventory";
 
     private static final EquipmentSlot[] ARMOR_SLOTS = {
             EquipmentSlot.HEAD,
@@ -45,6 +46,7 @@ public class PlayerVaultData {
     private final Map<ItemKey, VaultEntry> entries = new LinkedHashMap<>();
     private final List<BuildEcho> buildEchoes = new ArrayList<>();
     private long maxStackCapacity = Constants.DEFAULT_MAX_STACK_CAPACITY;
+    private boolean overflowOnFullInventory = true;
 
     public Collection<VaultEntry> getEntries() {
         return Collections.unmodifiableCollection(this.entries.values());
@@ -83,6 +85,14 @@ public class PlayerVaultData {
 
     public void setMaxStackCapacity(long maxStackCapacity) {
         this.maxStackCapacity = Math.max(1L, maxStackCapacity);
+    }
+
+    public boolean isOverflowOnFullInventory() {
+        return this.overflowOnFullInventory;
+    }
+
+    public void setOverflowOnFullInventory(boolean overflowOnFullInventory) {
+        this.overflowOnFullInventory = overflowOnFullInventory;
     }
 
     /**
@@ -482,6 +492,99 @@ public class PlayerVaultData {
     }
 
     /**
+     * Calculates how many items of {@code key} (up to {@code maxAmount}) can fit into the player's
+     * 36 main inventory slots without mutating the inventory.
+     */
+    public static int getInsertableCapacity(Inventory inv, ItemKey key, int maxAmount) {
+        if (key == null || key.isEmpty() || maxAmount <= 0) {
+            return 0;
+        }
+        int maxStackSize = Math.max(1, key.getItem().getMaxStackSize());
+        int capacity = 0;
+
+        for (int i = 0; i < inv.items.size() && capacity < maxAmount; i++) {
+            ItemStack existing = inv.items.get(i);
+            if (existing.isEmpty()) {
+                capacity += maxStackSize;
+            } else if (key.matches(existing) && existing.getCount() < maxStackSize) {
+                capacity += (maxStackSize - existing.getCount());
+            }
+        }
+
+        return Math.min(maxAmount, capacity);
+    }
+
+    /**
+     * Handles world item pickup overflow (EntityItemPickupEvent):
+     * <ul>
+     *   <li>If the item's {@link VaultEntry} has {@code overflowDeposit == true} and the pickup would exceed
+     *       {@code refillTarget}, only tops up the player's inventory to {@code refillTarget} and routes the
+     *       remainder directly into the Vault.</li>
+     *   <li>If the player's inventory cannot fit the full stack and {@link #overflowOnFullInventory} is enabled,
+     *       inserts what fits into the player's inventory and routes the remainder into the Vault.</li>
+     * </ul>
+     * Dispatches {@link com.soulsvault.network.PacketS2CVaultDelta} and
+     * {@link com.soulsvault.network.PacketS2COverflowToast} when items are routed to the Vault.
+     */
+    public PickupOverflowResult handleWorldItemPickup(ServerPlayer player, ItemStack entityStack) {
+        if (player == null || entityStack == null || entityStack.isEmpty()) {
+            return PickupOverflowResult.NONE;
+        }
+
+        ItemKey key = ItemKey.fromStack(entityStack);
+        if (key.isEmpty()) {
+            return PickupOverflowResult.NONE;
+        }
+
+        Inventory inv = player.getInventory();
+        VaultEntry entry = this.entries.get(key);
+        int stackCount = entityStack.getCount();
+        int allowedToInventory;
+
+        if (entry != null && entry.isOverflowDeposit()) {
+            int carriedCount = countInInventory(inv, key);
+            int capRemaining = Math.max(0, entry.getRefillTarget() - carriedCount);
+            allowedToInventory = getInsertableCapacity(inv, key, Math.min(stackCount, capRemaining));
+        } else if (this.overflowOnFullInventory) {
+            int fitInInventory = getInsertableCapacity(inv, key, stackCount);
+            if (fitInInventory >= stackCount) {
+                // Entire stack fits normally in the player's inventory; let vanilla handle it
+                return PickupOverflowResult.NONE;
+            }
+            allowedToInventory = fitInInventory;
+        } else {
+            return PickupOverflowResult.NONE;
+        }
+
+        int remainderForVault = stackCount - allowedToInventory;
+        if (remainderForVault <= 0) {
+            return PickupOverflowResult.NONE;
+        }
+
+        long acceptedToVault = deposit(key, remainderForVault);
+        if (acceptedToVault <= 0L) {
+            return PickupOverflowResult.NONE;
+        }
+
+        int insertedToInventory = 0;
+        if (allowedToInventory > 0) {
+            insertedToInventory = insertIntoInventory(inv, key, allowedToInventory);
+        }
+
+        int totalConsumed = insertedToInventory + (int) acceptedToVault;
+        entityStack.shrink(totalConsumed);
+
+        if (insertedToInventory > 0) {
+            inv.setChanged();
+        }
+        Services.PLATFORM.markVaultDirty(player);
+        Services.PLATFORM.sendVaultDelta(player, key, this.entries.get(key));
+        Services.PLATFORM.sendOverflowToast(player, key.toSingleStack(), (int) acceptedToVault, false);
+
+        return new PickupOverflowResult(true, insertedToInventory, (int) acceptedToVault, totalConsumed);
+    }
+
+    /**
      * Inserts up to {@code amount} items of {@code key} into the given player inventory's 36 main slots,
      * respecting {@link net.minecraft.world.item.Item#getMaxStackSize()}.
      *
@@ -552,6 +655,7 @@ public class PlayerVaultData {
 
     public CompoundTag save(CompoundTag root) {
         root.putLong(NBT_MAX_CAPACITY, this.maxStackCapacity);
+        root.putBoolean(NBT_OVERFLOW_ON_FULL, this.overflowOnFullInventory);
 
         ListTag entriesTag = new ListTag();
         for (VaultEntry entry : this.entries.values()) {
@@ -579,6 +683,12 @@ public class PlayerVaultData {
             this.maxStackCapacity = Constants.DEFAULT_MAX_STACK_CAPACITY;
         }
 
+        if (root.contains(NBT_OVERFLOW_ON_FULL, Tag.TAG_BYTE)) {
+            this.overflowOnFullInventory = root.getBoolean(NBT_OVERFLOW_ON_FULL);
+        } else {
+            this.overflowOnFullInventory = true;
+        }
+
         if (root.contains(NBT_ENTRIES, Tag.TAG_LIST)) {
             ListTag entriesTag = root.getList(NBT_ENTRIES, Tag.TAG_COMPOUND);
             for (int i = 0; i < entriesTag.size(); i++) {
@@ -602,5 +712,14 @@ public class PlayerVaultData {
             int refilledToPlayerCount,
             Set<ItemKey> modifiedKeys
     ) {
+    }
+
+    public record PickupOverflowResult(
+            boolean handled,
+            int insertedToInventory,
+            int sentToVault,
+            int totalConsumed
+    ) {
+        public static final PickupOverflowResult NONE = new PickupOverflowResult(false, 0, 0, 0);
     }
 }
