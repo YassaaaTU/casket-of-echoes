@@ -3,12 +3,15 @@ package com.soulsvault.forge;
 import com.soulsvault.CommonClass;
 import com.soulsvault.Constants;
 import com.soulsvault.core.VaultCategory;
+import com.soulsvault.forge.client.ForgeClientEvents;
 import com.soulsvault.forge.event.ForgeServerEvents;
 import com.soulsvault.forge.network.ForgeNetworkHandler;
 import com.soulsvault.forge.registry.ForgeModBlocks;
+import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TagsUpdatedEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
@@ -22,6 +25,8 @@ public class SoulsVaultForge {
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
         ForgeModBlocks.register(modEventBus);
         modEventBus.addListener(this::onCommonSetup);
+
+        DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> ForgeClientEvents.register(modEventBus));
 
         ForgeNetworkHandler.register();
         ForgeServerEvents.register();
