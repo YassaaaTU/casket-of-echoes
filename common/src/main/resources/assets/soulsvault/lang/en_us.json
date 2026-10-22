@@ -1,0 +1,22 @@
+{
+  "gui.soulsvault.title": "Casket of Echoes",
+  "gui.soulsvault.category.weapons": "Weapons",
+  "gui.soulsvault.category.ranged_ammo": "Ranged & Ammo",
+  "gui.soulsvault.category.armor": "Armor & Shields",
+  "gui.soulsvault.category.curios_relics": "Relics & Rings",
+  "gui.soulsvault.category.consumables": "Consumables",
+  "gui.soulsvault.category.materials": "Materials",
+  "gui.soulsvault.category.key_lore": "Key Items & Lore",
+  "gui.soulsvault.sort.name": "Sort: Name",
+  "gui.soulsvault.sort.count": "Sort: Quantity",
+  "gui.soulsvault.sort.damage": "Sort: Attack Power",
+  "gui.soulsvault.sort.rarity": "Sort: Rarity",
+  "gui.soulsvault.sort.recent": "Sort: Recently Acquired",
+  "gui.soulsvault.sort.mod": "Sort: Mod Origin",
+  "gui.soulsvault.action.rest_replenish": "Rest & Replenish",
+  "gui.soulsvault.action.quick_deposit": "Deposit Category",
+  "gui.soulsvault.toast.overflow": "Sent to Casket (+%s)",
+  "gui.soulsvault.toast.replenished": "Replenished from Casket (+%s)",
+  "block.soulsvault.bottomless_casket": "Bottomless Casket",
+  "item.soulsvault.vestige_moth": "Vestige Moth"
+}

@@ -1,0 +1,33 @@
+plugins {
+    id 'java-library'
+    id 'org.spongepowered.gradle.vanilla'
+}
+
+base {
+    archivesName = "${mod_id}-common"
+}
+
+minecraft {
+    version(minecraft_version)
+}
+
+dependencies {
+    compileOnly group: 'org.spongepowered', name: 'mixin', version: '0.8.5'
+    compileOnly group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.2'
+}
+
+configurations {
+    commonJava {
+        canBeResolved = false
+        canBeConsumed = true
+    }
+    commonResources {
+        canBeResolved = false
+        canBeConsumed = true
+    }
+}
+
+artifacts {
+    commonJava sourceSets.main.java.sourceDirectories.singleFile
+    commonResources sourceSets.main.resources.sourceDirectories.singleFile
+}
