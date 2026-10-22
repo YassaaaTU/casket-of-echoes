@@ -176,7 +176,7 @@ public class PlayerVaultData {
         }
 
         if (totalDeposited > 0L) {
-            inv.setChanged();
+            syncPlayerInventory(player);
         }
         return totalDeposited;
     }
@@ -199,7 +199,7 @@ public class PlayerVaultData {
         int inserted = insertIntoInventory(player.getInventory(), key, maxPossible);
         if (inserted > 0) {
             withdraw(key, inserted);
-            player.getInventory().setChanged();
+            syncPlayerInventory(player);
         }
         return inserted;
     }
@@ -257,7 +257,7 @@ public class PlayerVaultData {
         }
 
         if (!modifiedKeys.isEmpty()) {
-            inv.setChanged();
+            syncPlayerInventory(player);
         }
         return modifiedKeys;
     }
@@ -373,7 +373,7 @@ public class PlayerVaultData {
 
         // Step 3 — Feedback:
         if (!changedKeys.isEmpty()) {
-            inv.setChanged();
+            syncPlayerInventory(player);
             Services.PLATFORM.markVaultDirty(player);
             for (ItemKey changedKey : changedKeys) {
                 Services.PLATFORM.sendVaultDelta(player, changedKey, this.entries.get(changedKey));
@@ -444,8 +444,7 @@ public class PlayerVaultData {
         Services.PLATFORM.swapCurioSlots(player, this, echo.getCurioSlots(), modifiedKeys);
 
         if (!modifiedKeys.isEmpty()) {
-            player.getInventory().setChanged();
-            player.inventoryMenu.broadcastChanges();
+            syncPlayerInventory(player);
             player.level().playSound(
                     null,
                     player.blockPosition(),
@@ -489,6 +488,16 @@ public class PlayerVaultData {
             if (withdrawn > 0L) {
                 player.setItemSlot(slot, desiredKey.toSingleStack());
                 modifiedKeys.add(desiredKey);
+            }
+        }
+    }
+
+    public static void syncPlayerInventory(Player player) {
+        player.getInventory().setChanged();
+        if (player instanceof ServerPlayer serverPlayer) {
+            serverPlayer.inventoryMenu.broadcastChanges();
+            if (serverPlayer.containerMenu != serverPlayer.inventoryMenu) {
+                serverPlayer.containerMenu.broadcastChanges();
             }
         }
     }
@@ -587,7 +596,7 @@ public class PlayerVaultData {
         entityStack.shrink(totalConsumed);
 
         if (insertedToInventory > 0) {
-            inv.setChanged();
+            syncPlayerInventory(player);
         }
         Services.PLATFORM.markVaultDirty(player);
         Services.PLATFORM.sendVaultDelta(player, key, this.entries.get(key));

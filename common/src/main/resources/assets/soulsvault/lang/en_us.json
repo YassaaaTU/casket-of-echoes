@@ -1,6 +1,6 @@
 {
   "gui.soulsvault.title": "Casket of Echoes",
-  "gui.soulsvault.subtitle.inventory": "Carried Equipment & Inventory",
+  "gui.soulsvault.subtitle.inventory": "Equipped Gear & Inventory",
   "gui.soulsvault.subtitle.vault": "Stored Echoes",
   "gui.soulsvault.subtitle.inspect": "Item Lore & Attributes",
   "gui.soulsvault.subtitle.echoes": "Build Echoes (Loadout Swapper)",

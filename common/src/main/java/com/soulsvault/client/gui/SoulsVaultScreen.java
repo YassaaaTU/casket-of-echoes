@@ -86,8 +86,13 @@ public class SoulsVaultScreen extends Screen {
             EquipmentSlot.FEET
     };
 
-    private static final String[] EQUIP_SLOT_HINTS = {
-            "MH", "OH", "HD", "CH", "LG", "FT"
+    private static final ResourceLocation[] EQUIP_SLOT_ICONS = {
+            new ResourceLocation(Constants.MOD_ID, "textures/gui/slots/slot_mainhand.png"),
+            new ResourceLocation(Constants.MOD_ID, "textures/gui/slots/slot_offhand.png"),
+            new ResourceLocation(Constants.MOD_ID, "textures/gui/slots/slot_head.png"),
+            new ResourceLocation(Constants.MOD_ID, "textures/gui/slots/slot_chest.png"),
+            new ResourceLocation(Constants.MOD_ID, "textures/gui/slots/slot_legs.png"),
+            new ResourceLocation(Constants.MOD_ID, "textures/gui/slots/slot_feet.png")
     };
 
     private int leftPos;
@@ -263,7 +268,7 @@ public class SoulsVaultScreen extends Screen {
                     equipY,
                     VaultItemSlotWidget.SLOT_SIZE
             );
-            eqWidget.setEmptyHint(EQUIP_SLOT_HINTS[i]);
+            eqWidget.setEmptyIcon(EQUIP_SLOT_ICONS[i]);
             this.equipmentSlotWidgets.add(eqWidget);
         }
 
@@ -301,6 +306,12 @@ public class SoulsVaultScreen extends Screen {
         this.inspectionPane.setInspectedKey(this.selectedItemKey);
 
         ClientVaultCache.registerSyncListener(this.syncListener);
+        refreshAllSlots();
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
         refreshAllSlots();
     }
 

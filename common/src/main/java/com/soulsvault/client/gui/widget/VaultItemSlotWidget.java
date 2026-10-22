@@ -4,6 +4,7 @@ import com.soulsvault.core.VaultEntry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 
 import javax.annotation.Nullable;
@@ -35,7 +36,7 @@ public final class VaultItemSlotWidget {
     private long count;
     private boolean selected;
     @Nullable
-    private String emptyHint;
+    private ResourceLocation emptyIcon;
 
     public VaultItemSlotWidget(int x, int y, int size) {
         this.x = x;
@@ -43,8 +44,8 @@ public final class VaultItemSlotWidget {
         this.size = size;
     }
 
-    public void setEmptyHint(@Nullable String emptyHint) {
-        this.emptyHint = emptyHint;
+    public void setEmptyIcon(@Nullable ResourceLocation emptyIcon) {
+        this.emptyIcon = emptyIcon;
     }
 
     public void bindVaultEntry(@Nullable VaultEntry entry, boolean selected) {
@@ -114,24 +115,16 @@ public final class VaultItemSlotWidget {
         graphics.fill(this.x, this.y, this.x + this.size, this.y + this.size, bgColor);
         drawBorder(graphics, this.x, this.y, this.size, this.size, borderColor);
 
+        int iconX = this.x + (this.size - 16) / 2;
+        int iconY = this.y + (this.size - 16) / 2;
+
         if (this.displayStack.isEmpty()) {
-            if (this.emptyHint != null && !this.emptyHint.isEmpty()) {
-                Font font = Minecraft.getInstance().font;
-                float scale = 0.72F;
-                float tw = font.width(this.emptyHint) * scale;
-                float tx = this.x + (this.size - tw) / 2.0F;
-                float ty = this.y + (this.size - 6) / 2.0F;
-                graphics.pose().pushPose();
-                graphics.pose().translate(tx, ty, 50.0F);
-                graphics.pose().scale(scale, scale, 1.0F);
-                graphics.drawString(font, this.emptyHint, 0, 0, 0xFF4E4332, false);
-                graphics.pose().popPose();
+            if (this.emptyIcon != null) {
+                graphics.blit(this.emptyIcon, iconX, iconY, 0, 0, 16, 16, 16, 16);
             }
             return;
         }
 
-        int iconX = this.x + (this.size - 16) / 2;
-        int iconY = this.y + (this.size - 16) / 2;
         Font font = Minecraft.getInstance().font;
 
         graphics.renderItem(this.displayStack, iconX, iconY);
