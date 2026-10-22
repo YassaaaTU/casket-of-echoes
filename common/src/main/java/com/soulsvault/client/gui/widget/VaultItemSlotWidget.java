@@ -34,11 +34,17 @@ public final class VaultItemSlotWidget {
     private ItemStack displayStack = ItemStack.EMPTY;
     private long count;
     private boolean selected;
+    @Nullable
+    private String emptyHint;
 
     public VaultItemSlotWidget(int x, int y, int size) {
         this.x = x;
         this.y = y;
         this.size = size;
+    }
+
+    public void setEmptyHint(@Nullable String emptyHint) {
+        this.emptyHint = emptyHint;
     }
 
     public void bindVaultEntry(@Nullable VaultEntry entry, boolean selected) {
@@ -109,6 +115,18 @@ public final class VaultItemSlotWidget {
         drawBorder(graphics, this.x, this.y, this.size, this.size, borderColor);
 
         if (this.displayStack.isEmpty()) {
+            if (this.emptyHint != null && !this.emptyHint.isEmpty()) {
+                Font font = Minecraft.getInstance().font;
+                float scale = 0.72F;
+                float tw = font.width(this.emptyHint) * scale;
+                float tx = this.x + (this.size - tw) / 2.0F;
+                float ty = this.y + (this.size - 6) / 2.0F;
+                graphics.pose().pushPose();
+                graphics.pose().translate(tx, ty, 50.0F);
+                graphics.pose().scale(scale, scale, 1.0F);
+                graphics.drawString(font, this.emptyHint, 0, 0, 0xFF4E4332, false);
+                graphics.pose().popPose();
+            }
             return;
         }
 
