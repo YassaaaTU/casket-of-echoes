@@ -1,11 +1,15 @@
 package com.soulsvault.core;
 
 import com.soulsvault.Constants;
+import com.soulsvault.api.EchoSlotType;
+import com.soulsvault.api.SoulsVaultApi;
 import com.soulsvault.config.SoulsVaultConfig;
+import com.soulsvault.core.echo.HotbarEchoSlotType;
 import com.soulsvault.platform.Services;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.network.protocol.game.ClientboundSetCarriedItemPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -24,16 +28,21 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 /**
- * Pure Java vault state and transaction logic for a single player's Casket of Echoes.
+ * One player's Casket: their profile (per-item pins and refill targets, Build Echoes, Echo Pouch upgrades) bound to
+ * a {@link VaultStorage} holding the items. The storage is the player's private one, or their party's shared one
+ * when the party shares a Casket; the private storage is then set aside untouched.
  * <p>
- * Contains zero platform-specific imports; persistence and networking are routed
- * through {@link Services#PLATFORM}.
+ * On the client the same class mirrors what the server synced (entries, echoes and {@link VaultMeta}).
  */
 public class PlayerVaultData {
-    private static final String NBT_ENTRIES = "Entries";
+    private static final String NBT_LEGACY_ENTRIES = "Entries";
+    private static final String NBT_STORAGE = "Storage";
+    private static final String NBT_PREFS = "Prefs";
     private static final String NBT_BUILD_ECHOES = "BuildEchoes";
+    private static final String NBT_ECHO_UPGRADES = "EchoSlotUpgrades";
 
     private static final EquipmentSlot[] ARMOR_SLOTS = {
             EquipmentSlot.HEAD,
@@ -42,100 +51,212 @@ public class PlayerVaultData {
             EquipmentSlot.FEET
     };
 
-    private final Map<ItemKey, VaultEntry> entries = new LinkedHashMap<>();
+    private final VaultStorage privateStorage;
+    @Nullable
+    private final UUID owner;
+    private VaultStorage storage;
+    private final Map<ItemKey, ItemPrefs> prefs = new LinkedHashMap<>();
     private final List<BuildEcho> buildEchoes = new ArrayList<>();
+    private int echoSlotUpgrades;
+    private Runnable dirtyListener = () -> {
+    };
+    @Nullable
+    private VaultMeta syncedMeta;
+
+    public PlayerVaultData() {
+        this("player:local", null);
+    }
+
+    /**
+     * @param owner the player this Casket belongs to; recorded as the owner of items they put in a Covenant Casket
+     */
+    public PlayerVaultData(String privateStorageId, @Nullable UUID owner) {
+        this.privateStorage = new VaultStorage(privateStorageId);
+        this.storage = this.privateStorage;
+        this.owner = owner;
+    }
+
+    public void setDirtyListener(Runnable listener) {
+        this.dirtyListener = listener != null ? listener : () -> {
+        };
+        this.privateStorage.setDirtyListener(this.dirtyListener);
+    }
+
+    private void markDirty() {
+        this.dirtyListener.run();
+    }
+
+    // ------------------------------------------------------------------------------------------------ storage
+
+    /**
+     * Binds the Casket storage this player uses: a party's shared storage, or {@code null} for their private one.
+     */
+    public void bindStorage(@Nullable VaultStorage shared) {
+        this.storage = shared != null ? shared : this.privateStorage;
+    }
+
+    public VaultStorage getStorage() {
+        return this.storage;
+    }
+
+    public VaultStorage getPrivateStorage() {
+        return this.privateStorage;
+    }
+
+    public boolean isUsingSharedStorage() {
+        return this.storage != this.privateStorage;
+    }
+
+    public long getMaxStackCapacity() {
+        return this.storage.getMaxStackCapacity();
+    }
+
+    public boolean isOverflowOnFullInventory() {
+        return SoulsVaultConfig.isOverflowOnFullInventory();
+    }
+
+    public long getCount(ItemKey key) {
+        return this.storage.getCount(key);
+    }
+
+    /**
+     * Stores up to {@code amount} of {@code key} in the bound Casket (respecting {@link VaultRules} and capacity).
+     *
+     * @return the number of items accepted
+     */
+    public long deposit(ItemKey key, long amount) {
+        return this.storage.deposit(key, amount, this.owner);
+    }
+
+    /**
+     * @return the number of items actually withdrawn
+     */
+    public long withdraw(ItemKey key, long requestedAmount) {
+        return this.storage.withdraw(key, requestedAmount, this.owner);
+    }
+
+    // ------------------------------------------------------------------------------------------------ view
+
+    public ItemPrefs getPrefs(ItemKey key) {
+        ItemPrefs existing = this.prefs.get(key);
+        return existing != null ? existing : ItemPrefs.defaultsFor(key);
+    }
+
+    /**
+     * The entry this player sees for {@code key} (stored count + their own prefs), or {@code null} if neither
+     * anything is stored nor any pin is set.
+     */
+    @Nullable
+    public VaultEntry getEntry(ItemKey key) {
+        if (key == null || key.isEmpty()) {
+            return null;
+        }
+        long count = this.storage.getCount(key);
+        ItemPrefs itemPrefs = this.prefs.get(key);
+        if (count <= 0L && (itemPrefs == null || !itemPrefs.isPersistent())) {
+            return null;
+        }
+        ItemPrefs effective = itemPrefs != null ? itemPrefs : ItemPrefs.defaultsFor(key);
+        return new VaultEntry(
+                key,
+                count,
+                effective.autoRefill(),
+                effective.refillTarget(),
+                effective.overflowDeposit(),
+                effective.favorite(),
+                this.storage.getLastUpdated(key)
+        );
+    }
 
     public Collection<VaultEntry> getEntries() {
-        return Collections.unmodifiableCollection(this.entries.values());
+        Set<ItemKey> keys = new LinkedHashSet<>(this.storage.keys());
+        for (Map.Entry<ItemKey, ItemPrefs> pref : this.prefs.entrySet()) {
+            if (pref.getValue().isPersistent()) {
+                keys.add(pref.getKey());
+            }
+        }
+        List<VaultEntry> entries = new ArrayList<>(keys.size());
+        for (ItemKey key : keys) {
+            VaultEntry entry = getEntry(key);
+            if (entry != null) {
+                entries.add(entry);
+            }
+        }
+        return entries;
     }
 
     public List<VaultEntry> getEntriesByCategory(VaultCategory category) {
         List<VaultEntry> result = new ArrayList<>();
-        for (VaultEntry entry : this.entries.values()) {
-            if (category.matches(entry.getCategory()) && entry.shouldRetain()) {
+        for (VaultEntry entry : getEntries()) {
+            if (category.matches(entry.getCategory())) {
                 result.add(entry);
             }
         }
         return result;
     }
 
-    @Nullable
-    public VaultEntry getEntry(ItemKey key) {
-        if (key == null || key.isEmpty()) {
-            return null;
-        }
-        return this.entries.get(key);
-    }
-
-    public long getCount(ItemKey key) {
-        VaultEntry entry = getEntry(key);
-        return entry != null ? entry.getCount() : 0L;
-    }
-
     public List<BuildEcho> getBuildEchoes() {
         return Collections.unmodifiableList(this.buildEchoes);
     }
 
-    /**
-     * Per-{@link ItemKey} storage cap, driven by the server config ({@code maxStackCapacity}).
-     */
-    public long getMaxStackCapacity() {
-        return SoulsVaultConfig.getMaxStackCapacity();
+    // ------------------------------------------------------------------------------------------------ echo slots
+
+    public int getEchoSlotUpgrades() {
+        return this.echoSlotUpgrades;
     }
 
     /**
-     * Whether full-inventory pickups overflow into the Vault, driven by the server config
-     * ({@code overflowOnFullInventory}).
+     * Number of Build Echo slots: base config + Echo Pouches, capped by {@code echoes.maxSlots}.
      */
-    public boolean isOverflowOnFullInventory() {
-        return SoulsVaultConfig.isOverflowOnFullInventory();
+    public int getEchoSlots() {
+        if (this.syncedMeta != null) {
+            return this.syncedMeta.echoSlots();
+        }
+        SoulsVaultConfig.Echoes echoes = SoulsVaultConfig.echoes();
+        int max = Math.min(Constants.ABSOLUTE_MAX_BUILD_ECHOES, Math.max(1, echoes.maxSlots()));
+        return Math.max(1, Math.min(max, echoes.baseSlots() + this.echoSlotUpgrades));
     }
 
     /**
-     * Deposits up to {@code amount} of {@code key} into the vault, respecting {@link #getMaxStackCapacity()}.
+     * Applies one Echo Pouch.
      *
-     * @return the number of items actually accepted into the vault
+     * @return {@code false} when already at {@code echoes.maxSlots}
      */
-    public long deposit(ItemKey key, long amount) {
-        if (key == null || key.isEmpty() || amount <= 0L) {
-            return 0L;
+    public boolean addEchoSlotUpgrade() {
+        int before = getEchoSlots();
+        this.echoSlotUpgrades++;
+        if (getEchoSlots() == before) {
+            this.echoSlotUpgrades--;
+            return false;
         }
-        VaultEntry entry = this.entries.get(key);
-        long current = entry != null ? entry.getCount() : 0L;
-        long availableSpace = Math.max(0L, getMaxStackCapacity() - current);
-        long accepted = Math.min(amount, availableSpace);
-        if (accepted <= 0L) {
-            return 0L;
-        }
-        if (entry == null) {
-            entry = new VaultEntry(key, accepted);
-            this.entries.put(key, entry);
-        } else {
-            entry.addCount(accepted);
-        }
-        return accepted;
+        markDirty();
+        return true;
     }
 
     /**
-     * Withdraws up to {@code requestedAmount} of {@code key} from the vault.
-     *
-     * @return the number of items actually withdrawn
+     * Capacity / sharing summary for the client, see {@link VaultMeta}.
      */
-    public long withdraw(ItemKey key, long requestedAmount) {
-        if (key == null || key.isEmpty() || requestedAmount <= 0L) {
-            return 0L;
+    public VaultMeta createMeta(String partyName) {
+        if (this.syncedMeta != null) {
+            return this.syncedMeta;
         }
-        VaultEntry entry = this.entries.get(key);
-        if (entry == null || entry.getCount() <= 0L) {
-            return 0L;
-        }
-        long withdrawn = Math.min(entry.getCount(), requestedAmount);
-        entry.addCount(-withdrawn);
-        if (!entry.shouldRetain()) {
-            this.entries.remove(key);
-        }
-        return withdrawn;
+        return new VaultMeta(
+                this.storage.getMaxStackCapacity(),
+                this.storage.getMaxUniqueEntries(),
+                this.storage.uniqueEntries(),
+                getEchoSlots(),
+                isUsingSharedStorage(),
+                isUsingSharedStorage() ? partyName : "",
+                isUsingSharedStorage() ? this.privateStorage.totalItems() : 0L,
+                this.storage.getExpansions()
+        );
     }
+
+    public VaultMeta getMeta() {
+        return createMeta("");
+    }
+
+    // ------------------------------------------------------------------------------------------------ transactions
 
     /**
      * Deposits up to {@code requestedAmount} matching {@code key} from the player's 36 main inventory slots.
@@ -166,7 +287,7 @@ public class PlayerVaultData {
                 totalDeposited += accepted;
             }
             if (accepted < toTake) {
-                // Vault entry reached max capacity
+                // Vault entry reached max capacity or the item is not allowed
                 break;
             }
         }
@@ -187,11 +308,11 @@ public class PlayerVaultData {
         if (key == null || key.isEmpty() || requestedAmount <= 0L) {
             return 0L;
         }
-        VaultEntry entry = this.entries.get(key);
-        if (entry == null || entry.getCount() <= 0L) {
+        long stored = getCount(key);
+        if (stored <= 0L) {
             return 0L;
         }
-        int maxPossible = (int) Math.min(Integer.MAX_VALUE, Math.min(entry.getCount(), requestedAmount));
+        int maxPossible = (int) Math.min(Integer.MAX_VALUE, Math.min(stored, requestedAmount));
         int inserted = insertIntoInventory(player.getInventory(), key, maxPossible);
         if (inserted > 0) {
             withdraw(key, inserted);
@@ -214,8 +335,7 @@ public class PlayerVaultData {
         Map<ItemKey, Integer> carriedCounts = new LinkedHashMap<>();
         for (ItemStack stack : inv.items) {
             if (!stack.isEmpty()) {
-                ItemKey key = ItemKey.fromStack(stack);
-                carriedCounts.merge(key, stack.getCount(), Integer::sum);
+                carriedCounts.merge(ItemKey.fromStack(stack), stack.getCount(), Integer::sum);
             }
         }
 
@@ -229,14 +349,14 @@ public class PlayerVaultData {
                 continue;
             }
 
-            VaultEntry existing = this.entries.get(key);
-            if (category == VaultCategory.ALL && existing != null && existing.isFavorite()) {
+            ItemPrefs itemPrefs = this.prefs.get(key);
+            if (category == VaultCategory.ALL && itemPrefs != null && itemPrefs.favorite()) {
                 continue;
             }
             int allowedToDeposit = slotStack.getCount();
-            if (existing != null && existing.isAutoRefill()) {
+            if (itemPrefs != null && itemPrefs.autoRefill()) {
                 int currentTotal = carriedCounts.getOrDefault(key, 0);
-                int excess = Math.max(0, currentTotal - existing.getRefillTarget());
+                int excess = Math.max(0, currentTotal - itemPrefs.refillTarget());
                 allowedToDeposit = Math.min(slotStack.getCount(), excess);
             }
 
@@ -266,13 +386,9 @@ public class PlayerVaultData {
         if (key == null || key.isEmpty()) {
             return null;
         }
-        VaultEntry entry = this.entries.computeIfAbsent(key, k -> new VaultEntry(k, 0L));
-        entry.setFavorite(!entry.isFavorite());
-        if (!entry.shouldRetain()) {
-            this.entries.remove(key);
-            return null;
-        }
-        return entry;
+        ItemPrefs current = getPrefs(key);
+        setPrefs(key, current.withFavorite(!current.favorite()));
+        return getEntry(key);
     }
 
     @Nullable
@@ -280,26 +396,33 @@ public class PlayerVaultData {
         if (key == null || key.isEmpty()) {
             return null;
         }
-        VaultEntry entry = this.entries.computeIfAbsent(key, k -> new VaultEntry(k, 0L));
-        entry.setAutoRefill(autoRefill);
-        entry.setRefillTarget(Math.max(1, refillTarget));
-        entry.setOverflowDeposit(overflowDeposit);
-        if (!entry.shouldRetain()) {
-            this.entries.remove(key);
-            return null;
+        setPrefs(key, getPrefs(key).withRefill(autoRefill, Math.max(1, refillTarget), overflowDeposit));
+        return getEntry(key);
+    }
+
+    private void setPrefs(ItemKey key, ItemPrefs itemPrefs) {
+        if (itemPrefs.isPersistent()) {
+            this.prefs.put(key, itemPrefs);
+        } else {
+            this.prefs.remove(key);
         }
-        return entry;
+        markDirty();
     }
 
     /**
-     * Executes the 3-step Rest & Replenish transaction specified in Section 4.4 of GEMINI.md:
+     * Rest &amp; Replenish, specified in Section 4.4 of GEMINI.md:
      * <ol>
      *   <li>Auto-Sweep Overflow from the player's 36 main inventory slots into the Vault.</li>
-     *   <li>Auto-Refill Pinned Items ({@code autoRefill == true}) from the Vault up to {@code refillTarget}.</li>
-     *   <li>Mark SavedData dirty, dispatch delta & toast packets, and play a muted Souls chime.</li>
+     *   <li>Auto-Refill Pinned Items ({@code autoRefill == true}) from the Vault up to {@code refillTarget}, never
+     *       past the pack's {@link ReplenishCaps} and as adjusted by the loader's refill event.</li>
+     *   <li>Sync deltas to every viewer, toast, and play a muted Souls chime.</li>
      * </ol>
+     * Callers check {@link VaultAccess.Type#REST} first.
      */
     public RestReplenishResult performRestAndReplenish(ServerPlayer player) {
+        if (Services.PLATFORM.postRestReplenishPre(player)) {
+            return new RestReplenishResult(0, 0, Collections.emptySet());
+        }
         Inventory inv = player.getInventory();
         Set<ItemKey> changedKeys = new LinkedHashSet<>();
         ItemStack lastSweptStack = ItemStack.EMPTY;
@@ -307,14 +430,11 @@ public class PlayerVaultData {
         ItemStack lastRefilledStack = ItemStack.EMPTY;
         int totalRefilledToPlayer = 0;
 
-        // Step 1 — Auto-Sweep Overflow:
-        // Count total carried quantities across the 36 main inventory slots
+        // Step 1 — Auto-Sweep Overflow
         Map<ItemKey, Integer> carriedByKey = new LinkedHashMap<>();
-        for (int i = 0; i < inv.items.size(); i++) {
-            ItemStack stack = inv.items.get(i);
+        for (ItemStack stack : inv.items) {
             if (!stack.isEmpty()) {
-                ItemKey key = ItemKey.fromStack(stack);
-                carriedByKey.merge(key, stack.getCount(), Integer::sum);
+                carriedByKey.merge(ItemKey.fromStack(stack), stack.getCount(), Integer::sum);
             }
         }
 
@@ -324,12 +444,12 @@ public class PlayerVaultData {
                 continue;
             }
             ItemKey key = ItemKey.fromStack(slotStack);
-            VaultEntry entry = this.entries.get(key);
-            if (entry == null || !entry.isOverflowDeposit()) {
+            ItemPrefs itemPrefs = this.prefs.get(key);
+            if (itemPrefs == null || !itemPrefs.overflowDeposit()) {
                 continue;
             }
             int carried = carriedByKey.getOrDefault(key, 0);
-            int excess = carried - entry.getRefillTarget();
+            int excess = carried - itemPrefs.refillTarget();
             if (excess <= 0) {
                 continue;
             }
@@ -347,36 +467,49 @@ public class PlayerVaultData {
             }
         }
 
-        // Step 2 — Auto-Refill Pinned Items:
-        List<VaultEntry> snapshot = new ArrayList<>(this.entries.values());
-        for (VaultEntry entry : snapshot) {
-            if (!entry.isAutoRefill() || entry.getCount() <= 0L) {
+        // Step 2 — Auto-Refill Pinned Items, bounded by the pack's Estus-style caps
+        List<ReplenishCaps.Rule> capRules = ReplenishCaps.getRules();
+        Map<ReplenishCaps.Rule, Integer> carriedPerRule = new LinkedHashMap<>();
+        for (Map.Entry<ItemKey, ItemPrefs> pref : new ArrayList<>(this.prefs.entrySet())) {
+            ItemKey key = pref.getKey();
+            ItemPrefs itemPrefs = pref.getValue();
+            long stored = getCount(key);
+            if (!itemPrefs.autoRefill() || stored <= 0L) {
                 continue;
             }
-            ItemKey key = entry.getKey();
             int currentCount = countInInventory(inv, key);
-            if (currentCount < entry.getRefillTarget()) {
-                int needed = entry.getRefillTarget() - currentCount;
-                int toWithdraw = (int) Math.min(entry.getCount(), needed);
-                if (toWithdraw > 0) {
-                    int inserted = insertIntoInventory(inv, key, toWithdraw);
-                    if (inserted > 0) {
-                        withdraw(key, inserted);
-                        lastRefilledStack = key.toSingleStack();
-                        totalRefilledToPlayer += inserted;
-                        changedKeys.add(key);
-                    }
+            if (currentCount >= itemPrefs.refillTarget()) {
+                continue;
+            }
+            int toWithdraw = (int) Math.min(stored, itemPrefs.refillTarget() - currentCount);
+            List<ReplenishCaps.Rule> matching = new ArrayList<>();
+            for (ReplenishCaps.Rule rule : capRules) {
+                if (rule.matches(key)) {
+                    matching.add(rule);
+                    int carried = carriedPerRule.computeIfAbsent(rule, r -> r.countCarried(inv));
+                    toWithdraw = Math.min(toWithdraw, Math.max(0, rule.maxCarried() - carried));
                 }
+            }
+            toWithdraw = Math.max(0, Services.PLATFORM.postReplenishRefill(player, key, toWithdraw));
+            if (toWithdraw <= 0) {
+                continue;
+            }
+            int inserted = insertIntoInventory(inv, key, toWithdraw);
+            if (inserted > 0) {
+                withdraw(key, inserted);
+                for (ReplenishCaps.Rule rule : matching) {
+                    carriedPerRule.merge(rule, inserted, Integer::sum);
+                }
+                lastRefilledStack = key.toSingleStack();
+                totalRefilledToPlayer += inserted;
+                changedKeys.add(key);
             }
         }
 
-        // Step 3 — Feedback:
+        // Step 3 — Feedback
         if (!changedKeys.isEmpty()) {
             syncPlayerInventory(player);
-            Services.PLATFORM.markVaultDirty(player);
-            for (ItemKey changedKey : changedKeys) {
-                Services.PLATFORM.sendVaultDelta(player, changedKey, this.entries.get(changedKey));
-            }
+            VaultSync.commit(player, changedKeys);
             if (totalRefilledToPlayer > 0 && !lastRefilledStack.isEmpty()) {
                 Services.PLATFORM.sendOverflowToast(player, lastRefilledStack, totalRefilledToPlayer, true);
             } else if (totalSweptToVault > 0 && !lastSweptStack.isEmpty()) {
@@ -391,16 +524,34 @@ public class PlayerVaultData {
                     0.85F
             );
         }
-
+        Services.PLATFORM.postRestReplenishPost(player, totalSweptToVault, totalRefilledToPlayer);
         return new RestReplenishResult(totalSweptToVault, totalRefilledToPlayer, changedKeys);
     }
 
+    // ------------------------------------------------------------------------------------------------ build echoes
+
+    @Nullable
+    public BuildEcho getBuildEcho(int index) {
+        return index >= 0 && index < this.buildEchoes.size() ? this.buildEchoes.get(index) : null;
+    }
+
+    private void putBuildEcho(BuildEcho echo) {
+        int index = echo.getIndex();
+        while (this.buildEchoes.size() <= index) {
+            this.buildEchoes.add(BuildEcho.empty(this.buildEchoes.size()));
+        }
+        this.buildEchoes.set(index, echo);
+        markDirty();
+    }
+
     /**
-     * Saves the player's currently equipped Mainhand, Offhand, 4 Armor slots, and active Curios slots
-     * into a BuildEcho slot.
+     * Saves the player's hands, armor, Curios and every registered {@link EchoSlotType} into a Build Echo slot,
+     * keeping the slot's existing name and per-type toggles.
      */
-    public BuildEcho saveBuildEcho(Player player, int index, String name) {
-        int clampedIndex = Math.max(0, Math.min(Constants.MAX_BUILD_ECHOES - 1, index));
+    public BuildEcho saveBuildEcho(ServerPlayer player, int index) {
+        int clampedIndex = Math.max(0, Math.min(getEchoSlots() - 1, index));
+        BuildEcho previous = getBuildEcho(clampedIndex);
+
         ItemKey mainHand = ItemKey.fromStack(player.getItemBySlot(EquipmentSlot.MAINHAND));
         ItemKey offHand = ItemKey.fromStack(player.getItemBySlot(EquipmentSlot.OFFHAND));
         EnumMap<EquipmentSlot, ItemKey> armor = new EnumMap<>(EquipmentSlot.class);
@@ -409,38 +560,75 @@ public class PlayerVaultData {
         }
         Map<String, List<ItemKey>> curios = Services.PLATFORM.captureCurioSlots(player);
 
-        BuildEcho echo = new BuildEcho(clampedIndex, name, mainHand, offHand, armor, curios);
-        while (this.buildEchoes.size() <= clampedIndex) {
-            int fillIdx = this.buildEchoes.size();
-            this.buildEchoes.add(new BuildEcho(
-                    fillIdx,
-                    "Echo " + (fillIdx + 1),
-                    ItemKey.EMPTY,
-                    ItemKey.EMPTY,
-                    Collections.emptyMap(),
-                    Collections.emptyMap()
-            ));
+        Map<String, List<BuildEcho.EchoStack>> extras = new LinkedHashMap<>();
+        for (EchoSlotType type : SoulsVaultApi.getEchoSlotTypes()) {
+            int slots = type.slotCount(player);
+            List<BuildEcho.EchoStack> stacks = new ArrayList<>(slots);
+            for (int i = 0; i < slots; i++) {
+                ItemStack stack = type.getStack(player, i);
+                stacks.add(new BuildEcho.EchoStack(ItemKey.fromStack(stack), type.restoresStackSize() ? stack.getCount() : 1));
+            }
+            extras.put(type.id().toString(), stacks);
         }
-        this.buildEchoes.set(clampedIndex, echo);
+
+        BuildEcho echo = new BuildEcho(
+                clampedIndex,
+                previous != null ? previous.getName() : BuildEcho.defaultName(clampedIndex),
+                mainHand,
+                offHand,
+                armor,
+                curios,
+                extras,
+                previous != null ? previous.getTypeToggles() : Map.of(),
+                player.getInventory().selected
+        );
+        putBuildEcho(echo);
         return echo;
     }
 
+    public void renameBuildEcho(int index, String name) {
+        BuildEcho echo = getBuildEcho(index);
+        putBuildEcho((echo != null ? echo : BuildEcho.empty(index)).withName(name));
+    }
+
+    public void setBuildEchoTypeToggles(int index, Map<String, Boolean> toggles) {
+        BuildEcho echo = getBuildEcho(index);
+        putBuildEcho((echo != null ? echo : BuildEcho.empty(index)).withTypeToggles(toggles));
+    }
+
     /**
-     * Atomically swaps the player's worn equipment and Curios with the target BuildEcho using the Vault.
+     * Swaps the player's worn equipment, Curios and enabled extra slot groups with a Build Echo through the Casket.
+     * Callers check {@link VaultAccess.Type#ECHO_SWAP} first.
      */
     public Set<ItemKey> loadBuildEcho(ServerPlayer player, int index) {
-        if (index < 0 || index >= this.buildEchoes.size()) {
+        BuildEcho echo = getBuildEcho(index);
+        if (echo == null || index >= getEchoSlots()) {
             return Collections.emptySet();
         }
-        BuildEcho echo = this.buildEchoes.get(index);
         Set<ItemKey> modifiedKeys = new LinkedHashSet<>();
+        boolean restoresHotbar = echo.isTypeEnabled(HotbarEchoSlotType.INSTANCE)
+                && SoulsVaultApi.getEchoSlotType(HotbarEchoSlotType.ID) != null
+                && !echo.getExtraSlots(HotbarEchoSlotType.INSTANCE).isEmpty();
 
-        swapEquipmentSlot(player, EquipmentSlot.MAINHAND, echo.getMainHand(), modifiedKeys);
+        // The mainhand is a hotbar slot; when the hotbar is restored it already covers the held item.
+        if (!restoresHotbar) {
+            swapEquipmentSlot(player, EquipmentSlot.MAINHAND, echo.getMainHand(), modifiedKeys);
+        }
         swapEquipmentSlot(player, EquipmentSlot.OFFHAND, echo.getOffHand(), modifiedKeys);
         for (EquipmentSlot armorSlot : ARMOR_SLOTS) {
             swapEquipmentSlot(player, armorSlot, echo.getArmor(armorSlot), modifiedKeys);
         }
         Services.PLATFORM.swapCurioSlots(player, this, echo.getCurioSlots(), modifiedKeys);
+
+        for (EchoSlotType type : SoulsVaultApi.getEchoSlotTypes()) {
+            if (echo.isTypeEnabled(type)) {
+                swapExtraSlots(player, type, echo.getExtraSlots(type), modifiedKeys);
+            }
+        }
+        if (restoresHotbar && echo.getSelectedHotbarSlot() >= 0 && echo.getSelectedHotbarSlot() < Inventory.getSelectionSize()) {
+            player.getInventory().selected = echo.getSelectedHotbarSlot();
+            player.connection.send(new ClientboundSetCarriedItemPacket(echo.getSelectedHotbarSlot()));
+        }
 
         if (!modifiedKeys.isEmpty()) {
             syncPlayerInventory(player);
@@ -476,6 +664,7 @@ public class PlayerVaultData {
         if (!currentStack.isEmpty()) {
             long accepted = deposit(currentKey, currentStack.getCount());
             if (accepted < currentStack.getCount()) {
+                withdraw(currentKey, accepted);
                 return;
             }
             modifiedKeys.add(currentKey);
@@ -490,6 +679,57 @@ public class PlayerVaultData {
             }
         }
     }
+
+    private void swapExtraSlots(
+            ServerPlayer player,
+            EchoSlotType type,
+            List<BuildEcho.EchoStack> saved,
+            Set<ItemKey> modifiedKeys
+    ) {
+        int slots = Math.min(type.slotCount(player), saved.size());
+        for (int i = 0; i < slots; i++) {
+            BuildEcho.EchoStack desired = saved.get(i);
+            ItemStack current = type.getStack(player, i);
+            ItemKey currentKey = ItemKey.fromStack(current);
+
+            if (currentKey.equals(desired.key())) {
+                if (type.restoresStackSize() && !current.isEmpty()) {
+                    int want = Math.min(desired.count(), current.getMaxStackSize()) - current.getCount();
+                    long topUp = want > 0 ? withdraw(currentKey, want) : 0L;
+                    if (topUp > 0L) {
+                        type.setStack(player, i, currentKey.toStack(current.getCount() + (int) topUp));
+                        modifiedKeys.add(currentKey);
+                    }
+                }
+                continue;
+            }
+            if (!desired.isEmpty() && getCount(desired.key()) <= 0L) {
+                continue;
+            }
+
+            if (!current.isEmpty()) {
+                long accepted = deposit(currentKey, current.getCount());
+                if (accepted < current.getCount()) {
+                    withdraw(currentKey, accepted);
+                    continue;
+                }
+                type.setStack(player, i, ItemStack.EMPTY);
+                modifiedKeys.add(currentKey);
+            }
+
+            if (!desired.isEmpty()) {
+                ItemStack probe = desired.key().toSingleStack();
+                int want = type.restoresStackSize() ? Math.min(desired.count(), probe.getMaxStackSize()) : 1;
+                long withdrawn = type.mayPlace(player, i, probe) ? withdraw(desired.key(), want) : 0L;
+                if (withdrawn > 0L) {
+                    type.setStack(player, i, desired.key().toStack((int) withdrawn));
+                    modifiedKeys.add(desired.key());
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------------ inventory
 
     public static void syncPlayerInventory(Player player) {
         player.getInventory().setChanged();
@@ -537,14 +777,13 @@ public class PlayerVaultData {
     /**
      * Handles world item pickup overflow (EntityItemPickupEvent):
      * <ul>
-     *   <li>If the item's {@link VaultEntry} has {@code overflowDeposit == true} and the pickup would exceed
+     *   <li>If the item's prefs have {@code overflowDeposit == true} and the pickup would exceed
      *       {@code refillTarget}, only tops up the player's inventory to {@code refillTarget} and routes the
      *       remainder directly into the Vault.</li>
      *   <li>If the player's inventory cannot fit the full stack and {@link #isOverflowOnFullInventory()} is enabled,
      *       inserts what fits into the player's inventory and routes the remainder into the Vault.</li>
      * </ul>
-     * Dispatches {@link com.soulsvault.network.PacketS2CVaultDelta} and
-     * {@link com.soulsvault.network.PacketS2COverflowToast} when items are routed to the Vault.
+     * Syncs deltas to every viewer and sends an overflow toast when items are routed to the Vault.
      */
     public PickupOverflowResult handleWorldItemPickup(ServerPlayer player, ItemStack entityStack) {
         if (player == null || entityStack == null || entityStack.isEmpty()) {
@@ -552,18 +791,18 @@ public class PlayerVaultData {
         }
 
         ItemKey key = ItemKey.fromStack(entityStack);
-        if (key.isEmpty()) {
+        if (key.isEmpty() || !VaultRules.canStore(key)) {
             return PickupOverflowResult.NONE;
         }
 
         Inventory inv = player.getInventory();
-        VaultEntry entry = this.entries.get(key);
+        ItemPrefs itemPrefs = this.prefs.get(key);
         int stackCount = entityStack.getCount();
         int allowedToInventory;
 
-        if (entry != null && entry.isOverflowDeposit()) {
+        if (itemPrefs != null && itemPrefs.overflowDeposit()) {
             int carriedCount = countInInventory(inv, key);
-            int capRemaining = Math.max(0, entry.getRefillTarget() - carriedCount);
+            int capRemaining = Math.max(0, itemPrefs.refillTarget() - carriedCount);
             allowedToInventory = getInsertableCapacity(inv, key, Math.min(stackCount, capRemaining));
         } else if (isOverflowOnFullInventory()) {
             int fitInInventory = getInsertableCapacity(inv, key, stackCount);
@@ -597,8 +836,7 @@ public class PlayerVaultData {
         if (insertedToInventory > 0) {
             syncPlayerInventory(player);
         }
-        Services.PLATFORM.markVaultDirty(player);
-        Services.PLATFORM.sendVaultDelta(player, key, this.entries.get(key));
+        VaultSync.commit(player, List.of(key));
         Services.PLATFORM.sendOverflowToast(player, key.toSingleStack(), (int) acceptedToVault, false);
 
         return new PickupOverflowResult(true, insertedToInventory, (int) acceptedToVault, totalConsumed);
@@ -641,24 +879,22 @@ public class PlayerVaultData {
         return amount - remaining;
     }
 
-    public void replaceAllFromSync(Collection<VaultEntry> syncedEntries, Collection<BuildEcho> syncedEchoes) {
-        this.entries.clear();
-        for (VaultEntry entry : syncedEntries) {
-            if (entry != null && !entry.getKey().isEmpty()) {
-                this.entries.put(entry.getKey(), entry);
-            }
-        }
+    // ------------------------------------------------------------------------------------------------ client mirror
+
+    public void replaceAllFromSync(Collection<VaultEntry> syncedEntries, Collection<BuildEcho> syncedEchoes, VaultMeta meta) {
+        this.storage.clearFromSync();
+        this.prefs.clear();
+        appendEntriesFromSync(syncedEntries);
         this.buildEchoes.clear();
         if (syncedEchoes != null) {
             this.buildEchoes.addAll(syncedEchoes);
         }
+        this.syncedMeta = meta;
     }
 
     public void appendEntriesFromSync(Collection<VaultEntry> chunkEntries) {
         for (VaultEntry entry : chunkEntries) {
-            if (entry != null && !entry.getKey().isEmpty()) {
-                this.entries.put(entry.getKey(), entry);
-            }
+            applyDelta(entry.getKey(), entry);
         }
     }
 
@@ -666,50 +902,85 @@ public class PlayerVaultData {
         if (key == null || key.isEmpty()) {
             return;
         }
-        if (updatedEntry == null || !updatedEntry.shouldRetain()) {
-            this.entries.remove(key);
+        if (updatedEntry == null) {
+            this.storage.setFromSync(key, 0L, 0L);
+            this.prefs.remove(key);
+            return;
+        }
+        this.storage.setFromSync(key, updatedEntry.getCount(), updatedEntry.getLastUpdatedEpoch());
+        ItemPrefs itemPrefs = new ItemPrefs(
+                updatedEntry.isFavorite(),
+                updatedEntry.isAutoRefill(),
+                updatedEntry.getRefillTarget(),
+                updatedEntry.isOverflowDeposit()
+        );
+        if (itemPrefs.isPersistent()) {
+            this.prefs.put(key, itemPrefs);
         } else {
-            this.entries.put(key, updatedEntry);
+            this.prefs.remove(key);
         }
     }
 
+    // ------------------------------------------------------------------------------------------------ persistence
+
     public CompoundTag save(CompoundTag root) {
-        ListTag entriesTag = new ListTag();
-        for (VaultEntry entry : this.entries.values()) {
-            if (!entry.getKey().isEmpty() && entry.shouldRetain()) {
-                entriesTag.add(entry.toTag());
+        root.put(NBT_STORAGE, this.privateStorage.save(new CompoundTag()));
+
+        ListTag prefsTag = new ListTag();
+        for (Map.Entry<ItemKey, ItemPrefs> entry : this.prefs.entrySet()) {
+            if (!entry.getKey().isEmpty() && entry.getValue().isPersistent()) {
+                prefsTag.add(entry.getValue().toTag(entry.getKey()));
             }
         }
-        root.put(NBT_ENTRIES, entriesTag);
+        root.put(NBT_PREFS, prefsTag);
 
         ListTag echoesTag = new ListTag();
         for (BuildEcho echo : this.buildEchoes) {
             echoesTag.add(echo.toTag());
         }
         root.put(NBT_BUILD_ECHOES, echoesTag);
+        root.putInt(NBT_ECHO_UPGRADES, this.echoSlotUpgrades);
         return root;
     }
 
     public void load(CompoundTag root) {
-        this.entries.clear();
+        this.prefs.clear();
         this.buildEchoes.clear();
 
-        if (root.contains(NBT_ENTRIES, Tag.TAG_LIST)) {
-            ListTag entriesTag = root.getList(NBT_ENTRIES, Tag.TAG_COMPOUND);
+        if (root.contains(NBT_STORAGE, Tag.TAG_COMPOUND)) {
+            this.privateStorage.load(root.getCompound(NBT_STORAGE));
+        } else if (root.contains(NBT_LEGACY_ENTRIES, Tag.TAG_LIST)) {
+            // Pre-party format: counts and prefs were stored together on each entry
+            ListTag entriesTag = root.getList(NBT_LEGACY_ENTRIES, Tag.TAG_COMPOUND);
             for (int i = 0; i < entriesTag.size(); i++) {
                 VaultEntry entry = VaultEntry.fromTag(entriesTag.getCompound(i));
-                if (!entry.getKey().isEmpty() && entry.shouldRetain()) {
-                    this.entries.put(entry.getKey(), entry);
+                if (entry.getKey().isEmpty()) {
+                    continue;
+                }
+                this.privateStorage.depositUnchecked(entry.getKey(), entry.getCount());
+                ItemPrefs itemPrefs = new ItemPrefs(
+                        entry.isFavorite(), entry.isAutoRefill(), entry.getRefillTarget(), entry.isOverflowDeposit());
+                if (itemPrefs.isPersistent()) {
+                    this.prefs.put(entry.getKey(), itemPrefs);
                 }
             }
         }
 
-        if (root.contains(NBT_BUILD_ECHOES, Tag.TAG_LIST)) {
-            ListTag echoesTag = root.getList(NBT_BUILD_ECHOES, Tag.TAG_COMPOUND);
-            for (int i = 0; i < echoesTag.size(); i++) {
-                this.buildEchoes.add(BuildEcho.fromTag(echoesTag.getCompound(i)));
+        ListTag prefsTag = root.getList(NBT_PREFS, Tag.TAG_COMPOUND);
+        for (int i = 0; i < prefsTag.size(); i++) {
+            CompoundTag tag = prefsTag.getCompound(i);
+            ItemKey key = ItemPrefs.keyFromTag(tag);
+            ItemPrefs itemPrefs = ItemPrefs.fromTag(tag);
+            if (!key.isEmpty() && itemPrefs.isPersistent()) {
+                this.prefs.put(key, itemPrefs);
             }
         }
+
+        ListTag echoesTag = root.getList(NBT_BUILD_ECHOES, Tag.TAG_COMPOUND);
+        for (int i = 0; i < echoesTag.size() && i < Constants.ABSOLUTE_MAX_BUILD_ECHOES; i++) {
+            this.buildEchoes.add(BuildEcho.fromTag(echoesTag.getCompound(i)));
+        }
+        this.echoSlotUpgrades = Math.max(0, root.getInt(NBT_ECHO_UPGRADES));
     }
 
     public record RestReplenishResult(
@@ -719,12 +990,7 @@ public class PlayerVaultData {
     ) {
     }
 
-    public record PickupOverflowResult(
-            boolean handled,
-            int insertedToInventory,
-            int sentToVault,
-            int totalConsumed
-    ) {
+    public record PickupOverflowResult(boolean handled, int insertedToInventory, int sentToVault, int totalConsumed) {
         public static final PickupOverflowResult NONE = new PickupOverflowResult(false, 0, 0, 0);
     }
 }

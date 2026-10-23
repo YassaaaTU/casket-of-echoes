@@ -22,12 +22,20 @@ import java.util.UUID;
 public final class ForgeVaultSavedData extends SavedData {
     private final PlayerVaultData vaultData;
 
-    public ForgeVaultSavedData() {
-        this.vaultData = new PlayerVaultData();
+    public ForgeVaultSavedData(UUID playerUuid) {
+        this(new PlayerVaultData(storageId(playerUuid), playerUuid));
     }
 
     private ForgeVaultSavedData(PlayerVaultData vaultData) {
         this.vaultData = vaultData;
+        this.vaultData.setDirtyListener(this::setDirty);
+    }
+
+    /**
+     * Storage id of a player's private Casket.
+     */
+    public static String storageId(UUID playerUuid) {
+        return "player:" + playerUuid;
     }
 
     public static String getFileId(UUID playerUuid) {
@@ -42,14 +50,14 @@ public final class ForgeVaultSavedData extends SavedData {
         ServerLevel overworld = Objects.requireNonNull(server.overworld(), "Server overworld cannot be null");
         DimensionDataStorage storage = overworld.getDataStorage();
         return storage.computeIfAbsent(
-                ForgeVaultSavedData::load,
-                ForgeVaultSavedData::new,
+                tag -> load(tag, playerUuid),
+                () -> new ForgeVaultSavedData(playerUuid),
                 getFileId(playerUuid)
         );
     }
 
-    public static ForgeVaultSavedData load(CompoundTag tag) {
-        PlayerVaultData data = new PlayerVaultData();
+    public static ForgeVaultSavedData load(CompoundTag tag, UUID playerUuid) {
+        PlayerVaultData data = new PlayerVaultData(storageId(playerUuid), playerUuid);
         data.load(tag);
         return new ForgeVaultSavedData(data);
     }

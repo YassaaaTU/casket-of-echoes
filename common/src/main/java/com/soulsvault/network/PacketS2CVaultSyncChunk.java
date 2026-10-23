@@ -4,6 +4,7 @@ import com.soulsvault.Constants;
 import com.soulsvault.client.ClientVaultCache;
 import com.soulsvault.core.BuildEcho;
 import com.soulsvault.core.VaultEntry;
+import com.soulsvault.core.VaultMeta;
 import net.minecraft.network.FriendlyByteBuf;
 
 import java.util.ArrayList;
@@ -19,12 +20,14 @@ public final class PacketS2CVaultSyncChunk {
     private final int totalChunks;
     private final List<VaultEntry> entries;
     private final List<BuildEcho> echoes;
+    private final VaultMeta meta;
 
     public PacketS2CVaultSyncChunk(
             int chunkIndex,
             int totalChunks,
             List<VaultEntry> entries,
-            List<BuildEcho> echoes
+            List<BuildEcho> echoes,
+            VaultMeta meta
     ) {
         if (entries != null && entries.size() > Constants.MAX_SYNC_CHUNK_SIZE) {
             throw new IllegalArgumentException(
@@ -35,6 +38,7 @@ public final class PacketS2CVaultSyncChunk {
         this.totalChunks = Math.max(1, totalChunks);
         this.entries = entries != null ? List.copyOf(entries) : Collections.emptyList();
         this.echoes = echoes != null ? List.copyOf(echoes) : Collections.emptyList();
+        this.meta = meta != null ? meta : VaultMeta.DEFAULT;
     }
 
     public int getChunkIndex() {
@@ -66,6 +70,7 @@ public final class PacketS2CVaultSyncChunk {
         for (BuildEcho echo : this.echoes) {
             echo.toNetwork(buf);
         }
+        this.meta.encode(buf);
     }
 
     public static PacketS2CVaultSyncChunk decode(FriendlyByteBuf buf) {
@@ -78,16 +83,17 @@ public final class PacketS2CVaultSyncChunk {
             entries.add(VaultEntry.fromNetwork(buf));
         }
 
-        int echoCount = Math.min(Constants.MAX_BUILD_ECHOES * 2, Math.max(0, buf.readVarInt()));
+        int echoCount = Math.min(Constants.ABSOLUTE_MAX_BUILD_ECHOES, Math.max(0, buf.readVarInt()));
         List<BuildEcho> echoes = new ArrayList<>(echoCount);
         for (int i = 0; i < echoCount; i++) {
             echoes.add(BuildEcho.fromNetwork(buf));
         }
 
-        return new PacketS2CVaultSyncChunk(chunkIndex, totalChunks, entries, echoes);
+        VaultMeta meta = VaultMeta.decode(buf);
+        return new PacketS2CVaultSyncChunk(chunkIndex, totalChunks, entries, echoes, meta);
     }
 
     public void handleClient() {
-        ClientVaultCache.handleSyncChunk(this.chunkIndex, this.totalChunks, this.entries, this.echoes);
+        ClientVaultCache.handleSyncChunk(this.chunkIndex, this.totalChunks, this.entries, this.echoes, this.meta);
     }
 }
