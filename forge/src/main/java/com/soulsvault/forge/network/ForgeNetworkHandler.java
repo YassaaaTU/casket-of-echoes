@@ -5,13 +5,21 @@ import com.soulsvault.core.BuildEcho;
 import com.soulsvault.core.ItemKey;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.core.VaultEntry;
+import com.soulsvault.core.VaultMeta;
+import com.soulsvault.network.PacketC2SEchoEdit;
 import com.soulsvault.network.PacketC2SFillCraftingGrid;
 import com.soulsvault.network.PacketC2SOpenVault;
+import com.soulsvault.network.PacketC2SPartyAction;
 import com.soulsvault.network.PacketC2SVaultAction;
+import com.soulsvault.network.PacketS2CEquipLoad;
+import com.soulsvault.network.PacketS2COpenPartyScreen;
 import com.soulsvault.network.PacketS2COverflowToast;
-import com.soulsvault.network.PacketS2CVaultDelta;
+import com.soulsvault.network.PacketS2CPartySync;
 import com.soulsvault.network.PacketS2CSyncConfig;
+import com.soulsvault.network.PacketS2CVaultDelta;
 import com.soulsvault.network.PacketS2CVaultSyncChunk;
+import com.soulsvault.party.PartyService;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
@@ -26,6 +34,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -33,7 +44,7 @@ import java.util.function.Supplier;
  * Implements chunked vault synchronization (max 100 entries/packet) and single-entry delta updates.
  */
 public final class ForgeNetworkHandler {
-    private static final String PROTOCOL_VERSION = "2";
+    private static final String PROTOCOL_VERSION = "3";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(Constants.MOD_ID, "main"),
@@ -116,6 +127,48 @@ public final class ForgeNetworkHandler {
                 ForgeNetworkHandler::handleFillCraftingGrid,
                 Optional.of(NetworkDirection.PLAY_TO_SERVER)
         );
+
+        registerServerbound(PacketC2SEchoEdit.class, PacketC2SEchoEdit::encode, PacketC2SEchoEdit::decode,
+                PacketC2SEchoEdit::handleServer);
+        registerServerbound(PacketC2SPartyAction.class, PacketC2SPartyAction::encode, PacketC2SPartyAction::decode,
+                PacketC2SPartyAction::handleServer);
+        registerClientbound(PacketS2CPartySync.class, PacketS2CPartySync::encode, PacketS2CPartySync::decode,
+                PacketS2CPartySync::handleClient);
+        registerClientbound(PacketS2COpenPartyScreen.class, PacketS2COpenPartyScreen::encode, PacketS2COpenPartyScreen::decode,
+                PacketS2COpenPartyScreen::handleClient);
+        registerClientbound(PacketS2CEquipLoad.class, PacketS2CEquipLoad::encode, PacketS2CEquipLoad::decode,
+                PacketS2CEquipLoad::handleClient);
+    }
+
+    private static <T> void registerServerbound(
+            Class<T> type,
+            BiConsumer<T, FriendlyByteBuf> encoder,
+            Function<FriendlyByteBuf, T> decoder,
+            BiConsumer<T, ServerPlayer> handler
+    ) {
+        CHANNEL.registerMessage(packetId++, type, encoder, decoder, (msg, ctxSupplier) -> {
+            NetworkEvent.Context ctx = ctxSupplier.get();
+            ctx.enqueueWork(() -> {
+                ServerPlayer sender = ctx.getSender();
+                if (sender != null) {
+                    handler.accept(msg, sender);
+                }
+            });
+            ctx.setPacketHandled(true);
+        }, Optional.of(NetworkDirection.PLAY_TO_SERVER));
+    }
+
+    private static <T> void registerClientbound(
+            Class<T> type,
+            BiConsumer<T, FriendlyByteBuf> encoder,
+            Function<FriendlyByteBuf, T> decoder,
+            Consumer<T> handler
+    ) {
+        CHANNEL.registerMessage(packetId++, type, encoder, decoder, (msg, ctxSupplier) -> {
+            NetworkEvent.Context ctx = ctxSupplier.get();
+            ctx.enqueueWork(() -> handler.accept(msg));
+            ctx.setPacketHandled(true);
+        }, Optional.of(NetworkDirection.PLAY_TO_CLIENT));
     }
 
     private static void handleOpenVault(PacketC2SOpenVault msg, Supplier<NetworkEvent.Context> ctxSupplier) {
@@ -200,9 +253,11 @@ public final class ForgeNetworkHandler {
     public static void syncFullVaultToClient(ServerPlayer player, PlayerVaultData vaultData) {
         List<VaultEntry> allEntries = new ArrayList<>(vaultData.getEntries());
         List<BuildEcho> echoes = vaultData.getBuildEchoes();
+        String partyName = PartyService.sharedPartyName(player.server, player.getUUID());
+        VaultMeta meta = vaultData.createMeta(partyName != null ? partyName : "");
 
         if (allEntries.isEmpty()) {
-            sendToClient(player, new PacketS2CVaultSyncChunk(0, 1, Collections.emptyList(), echoes));
+            sendToClient(player, new PacketS2CVaultSyncChunk(0, 1, Collections.emptyList(), echoes, meta));
             return;
         }
 
@@ -214,7 +269,7 @@ public final class ForgeNetworkHandler {
             int end = Math.min(start + chunkSize, allEntries.size());
             List<VaultEntry> slice = allEntries.subList(start, end);
             List<BuildEcho> chunkEchoes = (chunkIndex == 0) ? echoes : Collections.emptyList();
-            sendToClient(player, new PacketS2CVaultSyncChunk(chunkIndex, totalChunks, slice, chunkEchoes));
+            sendToClient(player, new PacketS2CVaultSyncChunk(chunkIndex, totalChunks, slice, chunkEchoes, meta));
         }
     }
 

@@ -3,11 +3,17 @@ package com.soulsvault.platform.services;
 import com.soulsvault.core.AccessorySlotAccess;
 import com.soulsvault.core.ItemKey;
 import com.soulsvault.core.PlayerVaultData;
+import com.soulsvault.core.VaultAccess;
 import com.soulsvault.core.VaultEntry;
+import com.soulsvault.core.VaultStorage;
+import com.soulsvault.core.rest.RestPointProfile;
+import com.soulsvault.party.PartyRegistry;
 import com.soulsvault.world.inventory.SoulsVaultMenu;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.ItemStack;
@@ -18,6 +24,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 public interface IPlatformHelper {
 
@@ -112,7 +119,7 @@ public interface IPlatformHelper {
     /**
      * Opens the server-synchronized {@link SoulsVaultMenu} for the player and syncs their Vault contents.
      */
-    void openVaultMenu(ServerPlayer player, boolean openedAtRestPoint);
+    void openVaultMenu(ServerPlayer player, RestPointProfile.Grants grants);
 
     /**
      * Spawns a 60-second temporary SpectralCasketEntity in front of the player.
@@ -122,15 +129,85 @@ public interface IPlatformHelper {
     }
 
     /**
-     * Retrieves the server-side persisted PlayerVaultData for the given player
-     * from the Overworld DimensionDataStorage.
+     * Retrieves the server-side persisted PlayerVaultData for the given player from the Overworld
+     * DimensionDataStorage, bound to their party's shared Casket storage when the party shares one.
      */
-    PlayerVaultData getPlayerVaultData(ServerPlayer player);
+    default PlayerVaultData getPlayerVaultData(ServerPlayer player) {
+        return getPlayerVaultData(player.server, player.getUUID());
+    }
 
     /**
-     * Marks the player's SavedData instance dirty on the Overworld DimensionDataStorage.
+     * Same as {@link #getPlayerVaultData(ServerPlayer)} by id, so it also works for offline players.
      */
-    void markVaultDirty(ServerPlayer player);
+    PlayerVaultData getPlayerVaultData(MinecraftServer server, UUID playerId);
+
+    /**
+     * A party's shared Casket storage ({@code party:<key>}), created empty on first use and saved separately
+     * from any player.
+     */
+    VaultStorage getSharedStorage(MinecraftServer server, String storageId);
+
+    /**
+     * Persistent built-in parties and per-party options.
+     */
+    PartyRegistry getPartyRegistry(MinecraftServer server);
+
+    /**
+     * Vault data marks itself dirty on change; kept for callers that mutate through other paths.
+     */
+    default void markVaultDirty(ServerPlayer player) {
+    }
+
+    /**
+     * Fires the loader's cancelable vault access event.
+     *
+     * @return the denial reason when a listener cancelled it, else {@code null}
+     */
+    @Nullable
+    default Component postVaultAccessEvent(ServerPlayer player, VaultAccess.Type type, boolean atRestPoint) {
+        return null;
+    }
+
+    /**
+     * Fires the loader's cancelable Rest &amp; Replenish "pre" event.
+     *
+     * @return {@code true} if a listener cancelled the rest
+     */
+    default boolean postRestReplenishPre(ServerPlayer player) {
+        return false;
+    }
+
+    /**
+     * Fires the loader's per-item refill event, letting listeners change how many items are refilled.
+     */
+    default int postReplenishRefill(ServerPlayer player, ItemKey key, int amount) {
+        return amount;
+    }
+
+    default void postRestReplenishPost(ServerPlayer player, int sweptToVault, int refilledToPlayer) {
+    }
+
+    /**
+     * Epic Fight weight of an item in the given slot (soft dependency), or {@code 0}.
+     */
+    default double getEpicFightWeight(ItemStack stack, EquipmentSlot slot) {
+        return 0.0D;
+    }
+
+    /**
+     * Value of the {@code soulsvault:equip_load_bonus} attribute.
+     */
+    default double getEquipLoadBonus(ServerPlayer player) {
+        return 0.0D;
+    }
+
+    void sendEquipLoad(ServerPlayer player, double load, double capacity);
+
+    /**
+     * Gives each listed player every FTB Quests quest any of them completed (soft dependency), or does nothing.
+     */
+    default void syncQuestProgress(List<ServerPlayer> players) {
+    }
 
     /**
      * Sends a C2S packet from the client to the server.

@@ -5,6 +5,8 @@ import com.soulsvault.client.ClientVaultCache;
 import com.soulsvault.client.SoulsVaultKeyMappings;
 import com.soulsvault.client.gui.SoulsVaultScreen;
 import com.soulsvault.client.hud.SoulsOverflowToastOverlay;
+import com.soulsvault.client.party.ClientPartyCache;
+import com.soulsvault.client.party.PartyHudOverlay;
 import com.soulsvault.client.renderer.SpectralCasketRenderer;
 import com.soulsvault.config.SoulsVaultConfig;
 import com.soulsvault.forge.network.ForgeNetworkHandler;
@@ -14,10 +16,12 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.client.event.EntityRenderersEvent;
 import net.minecraftforge.client.event.RegisterGuiOverlaysEvent;
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
 import net.minecraftforge.client.event.ScreenEvent;
+import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
 import net.minecraftforge.client.settings.KeyConflictContext;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
@@ -40,6 +44,11 @@ public final class ForgeClientEvents {
         modEventBus.addListener(ForgeClientEvents::onRegisterKeyMappings);
         MinecraftForge.EVENT_BUS.addListener(ForgeClientEvents::onScreenOpening);
         MinecraftForge.EVENT_BUS.addListener(ForgeClientEvents::onClientTick);
+        MinecraftForge.EVENT_BUS.addListener(ForgeClientEvents::onLoggingOut);
+    }
+
+    private static void onLoggingOut(final ClientPlayerNetworkEvent.LoggingOut event) {
+        ClientPartyCache.reset();
     }
 
     private static void onClientSetup(final FMLClientSetupEvent event) {
@@ -106,6 +115,12 @@ public final class ForgeClientEvents {
                 "overflow_toast",
                 (gui, guiGraphics, partialTick, screenWidth, screenHeight) ->
                         SoulsOverflowToastOverlay.render(guiGraphics, partialTick, screenWidth, screenHeight)
+        );
+        event.registerAbove(
+                VanillaGuiOverlay.HOTBAR.id(),
+                "party_frames",
+                (gui, guiGraphics, partialTick, screenWidth, screenHeight) ->
+                        PartyHudOverlay.render(guiGraphics, partialTick, screenWidth, screenHeight)
         );
     }
 

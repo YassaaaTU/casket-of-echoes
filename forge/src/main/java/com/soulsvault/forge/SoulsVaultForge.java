@@ -3,10 +3,13 @@ package com.soulsvault.forge;
 import com.soulsvault.CommonClass;
 import com.soulsvault.Constants;
 import com.soulsvault.core.VaultCategory;
+import com.soulsvault.core.rest.RestPointProfiles;
 import com.soulsvault.forge.client.ForgeClientEvents;
+import com.soulsvault.forge.compat.FtbQuestsCompat;
 import com.soulsvault.forge.config.ForgeSoulsVaultConfig;
 import com.soulsvault.forge.event.ForgeServerEvents;
 import com.soulsvault.forge.network.ForgeNetworkHandler;
+import com.soulsvault.forge.registry.ForgeModAttributes;
 import com.soulsvault.forge.registry.ForgeModBlocks;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.MinecraftForge;
@@ -26,6 +29,7 @@ public class SoulsVaultForge {
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
         ForgeSoulsVaultConfig.register(modEventBus);
         ForgeModBlocks.register(modEventBus);
+        ForgeModAttributes.register(modEventBus);
         modEventBus.addListener(this::onCommonSetup);
 
         DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> ForgeClientEvents.register(modEventBus));
@@ -37,10 +41,14 @@ public class SoulsVaultForge {
     }
 
     private void onCommonSetup(final FMLCommonSetupEvent event) {
-        event.enqueueWork(ForgeNetworkHandler::register);
+        event.enqueueWork(() -> {
+            ForgeNetworkHandler.register();
+            FtbQuestsCompat.init();
+        });
     }
 
     private void onTagsUpdated(final TagsUpdatedEvent event) {
         VaultCategory.clearCache();
+        RestPointProfiles.clearCache();
     }
 }

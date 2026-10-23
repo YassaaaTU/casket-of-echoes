@@ -58,3 +58,25 @@ mandatory=false
 versionRange="*"
 ordering="NONE"
 side="CLIENT"
+
+# Party providers / quest sharing: optional, used through reflection only when installed
+[[dependencies.${mod_id}]]
+modId="ftbteams"
+mandatory=false
+versionRange="*"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.${mod_id}]]
+modId="ftbquests"
+mandatory=false
+versionRange="*"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.${mod_id}]]
+modId="openpartiesandclaims"
+mandatory=false
+versionRange="*"
+ordering="NONE"
+side="BOTH"
