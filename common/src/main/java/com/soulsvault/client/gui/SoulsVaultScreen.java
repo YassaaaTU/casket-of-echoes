@@ -115,6 +115,8 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
 
     private final VaultGridView gridView;
     private boolean inspectionMode = false;
+    private int lastMouseX = -1;
+    private int lastMouseY = -1;
 
     private final List<CategoryTabButton> categoryTabButtons = new ArrayList<>();
     private final List<VaultItemSlotWidget> vaultSlotWidgets = new ArrayList<>();
@@ -859,6 +861,8 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        this.lastMouseX = mouseX;
+        this.lastMouseY = mouseY;
         // Like AE2 / Refined Storage: never re-sort the grid under the cursor
         this.gridView.setPaused(isMouseOverVaultGrid(mouseX, mouseY));
         this.renderBackground(graphics);
@@ -1262,6 +1266,18 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
 
     public boolean isCraftingPaneActive() {
         return this.menu.getLeftPaneMode() == LeftPaneMode.CRAFTING;
+    }
+
+    /**
+     * Whether the mouse (as of the last rendered frame) is over the crafting arrow. Recipe viewer click areas check
+     * this themselves because The Aether 1.5.2's JEI mixin hands JEI the mouse X as the Y for click-area tooltips.
+     */
+    public boolean isMouseOverCraftArrow() {
+        int x = this.lastMouseX - this.leftPos;
+        int y = this.lastMouseY - this.topPos;
+        return isCraftingPaneActive()
+                && x >= CRAFT_ARROW_X && x < CRAFT_ARROW_X + CRAFT_ARROW_WIDTH
+                && y >= CRAFT_ARROW_Y && y < CRAFT_ARROW_Y + CRAFT_ARROW_HEIGHT;
     }
 
     private void onVaultWidgetClicked(VaultItemSlotWidget widget, int button) {

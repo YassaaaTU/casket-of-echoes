@@ -165,7 +165,9 @@ public class SoulsVaultJeiPlugin implements IModPlugin {
 
         @Override
         public Collection<IGuiClickableArea> getGuiClickableAreas(SoulsVaultScreen screen, double guiMouseX, double guiMouseY) {
-            if (!screen.isCraftingPaneActive()) {
+            // Uses the screen's own mouse position: The Aether's JEI mixin passes guiMouseX as guiMouseY when JEI
+            // draws click-area tooltips, which would show "Show Recipes" in a whole column above and below the arrow.
+            if (!screen.isMouseOverCraftArrow()) {
                 return List.of();
             }
             return List.of(IGuiClickableArea.createBasic(
