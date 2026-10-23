@@ -1,12 +1,15 @@
 package com.soulsvault.platform.services;
 
+import com.soulsvault.core.AccessorySlotAccess;
 import com.soulsvault.core.ItemKey;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.core.VaultEntry;
+import com.soulsvault.world.inventory.SoulsVaultMenu;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 
@@ -79,6 +82,37 @@ public interface IPlatformHelper {
             Set<ItemKey> modifiedKeys
     ) {
     }
+
+    /**
+     * Returns all live Curios & Aether accessory slots (or cosmetic Curios slots) for the given player.
+     */
+    default List<AccessorySlotAccess> getAccessorySlots(Player player, boolean cosmetic) {
+        return Collections.emptyList();
+    }
+
+    /**
+     * Returns the 4 Cosmetic Armor Reworked slots if {@code cosmeticarmorreworked} is installed.
+     */
+    default List<AccessorySlotAccess> getCosmeticArmorSlots(Player player) {
+        return Collections.emptyList();
+    }
+
+    /**
+     * Triggers the Waystones inventory button action if {@code waystones} is loaded.
+     */
+    default boolean triggerWaystonesButton() {
+        return false;
+    }
+
+    /**
+     * Returns the registered MenuType for {@link SoulsVaultMenu}.
+     */
+    MenuType<SoulsVaultMenu> getVaultMenuType();
+
+    /**
+     * Opens the server-synchronized {@link SoulsVaultMenu} for the player and syncs their Vault contents.
+     */
+    void openVaultMenu(ServerPlayer player, boolean openedAtRestPoint);
 
     /**
      * Spawns a 60-second temporary SpectralCasketEntity in front of the player.

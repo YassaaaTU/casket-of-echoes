@@ -5,14 +5,16 @@ import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.core.VaultCategory;
 import com.soulsvault.core.VaultEntry;
 import com.soulsvault.platform.Services;
+import com.soulsvault.world.inventory.SoulsVaultMenu;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
 
 import java.util.Objects;
 import java.util.Set;
 
 /**
- * Client-to-Server packet for all vault mutations and interactions.
+ * Client-to-Server packet for all vault mutations, cursor transfers, and crafting grid actions.
  */
 public final class PacketC2SVaultAction {
     public static final int FLAG_AUTO_REFILL = 1;
@@ -21,6 +23,9 @@ public final class PacketC2SVaultAction {
     public enum ActionType {
         DEPOSIT,
         WITHDRAW,
+        DEPOSIT_CARRIED,
+        PICKUP_TO_CURSOR,
+        CLEAR_CRAFTING_GRID,
         DEPOSIT_ALL_CATEGORY,
         TOGGLE_FAVORITE,
         SET_REFILL_TARGET,
@@ -47,6 +52,18 @@ public final class PacketC2SVaultAction {
 
     public static PacketC2SVaultAction withdraw(ItemKey key, long amount) {
         return new PacketC2SVaultAction(ActionType.WITHDRAW, key, amount, 0);
+    }
+
+    public static PacketC2SVaultAction depositCarried(boolean singleItemOnly) {
+        return new PacketC2SVaultAction(ActionType.DEPOSIT_CARRIED, ItemKey.EMPTY, singleItemOnly ? 1L : 64L, singleItemOnly ? 1 : 0);
+    }
+
+    public static PacketC2SVaultAction pickupToCursor(ItemKey key, int amount) {
+        return new PacketC2SVaultAction(ActionType.PICKUP_TO_CURSOR, key, Math.max(1, amount), 0);
+    }
+
+    public static PacketC2SVaultAction clearCraftingGrid() {
+        return new PacketC2SVaultAction(ActionType.CLEAR_CRAFTING_GRID, ItemKey.EMPTY, 0L, 0);
     }
 
     public static PacketC2SVaultAction depositAllCategory(VaultCategory category) {
@@ -114,6 +131,12 @@ public final class PacketC2SVaultAction {
         if (player == null || player.isSpectator()) {
             return;
         }
+        if (player.containerMenu instanceof SoulsVaultMenu vaultMenu && !vaultMenu.isVaultAccessAllowed()) {
+            if (this.action != ActionType.CLEAR_CRAFTING_GRID) {
+                return;
+            }
+        }
+
         PlayerVaultData vaultData = Services.PLATFORM.getPlayerVaultData(player);
 
         switch (this.action) {
@@ -129,6 +152,54 @@ public final class PacketC2SVaultAction {
                 if (withdrawn > 0L) {
                     Services.PLATFORM.markVaultDirty(player);
                     Services.PLATFORM.sendVaultDelta(player, this.key, vaultData.getEntry(this.key));
+                }
+            }
+            case DEPOSIT_CARRIED -> {
+                ItemStack carried = player.containerMenu.getCarried();
+                if (!carried.isEmpty()) {
+                    ItemKey carriedKey = ItemKey.fromStack(carried);
+                    int toDeposit = this.extraData == 1 ? 1 : carried.getCount();
+                    long accepted = vaultData.deposit(carriedKey, toDeposit);
+                    if (accepted > 0L) {
+                        carried.shrink((int) accepted);
+                        player.containerMenu.setCarried(carried.isEmpty() ? ItemStack.EMPTY : carried);
+                        player.containerMenu.broadcastChanges();
+                        Services.PLATFORM.markVaultDirty(player);
+                        Services.PLATFORM.sendVaultDelta(player, carriedKey, vaultData.getEntry(carriedKey));
+                    }
+                }
+            }
+            case PICKUP_TO_CURSOR -> {
+                if (this.key.isEmpty()) {
+                    return;
+                }
+                ItemStack carried = player.containerMenu.getCarried();
+                int maxStack = Math.max(1, this.key.getItem().getMaxStackSize());
+                if (carried.isEmpty()) {
+                    int request = (int) Math.min(maxStack, Math.max(1L, this.amount));
+                    long withdrawn = vaultData.withdraw(this.key, request);
+                    if (withdrawn > 0L) {
+                        player.containerMenu.setCarried(this.key.toStack((int) withdrawn));
+                        player.containerMenu.broadcastChanges();
+                        Services.PLATFORM.markVaultDirty(player);
+                        Services.PLATFORM.sendVaultDelta(player, this.key, vaultData.getEntry(this.key));
+                    }
+                } else if (this.key.matches(carried) && carried.getCount() < maxStack) {
+                    int space = maxStack - carried.getCount();
+                    int request = (int) Math.min(space, Math.max(1L, this.amount));
+                    long withdrawn = vaultData.withdraw(this.key, request);
+                    if (withdrawn > 0L) {
+                        carried.grow((int) withdrawn);
+                        player.containerMenu.setCarried(carried);
+                        player.containerMenu.broadcastChanges();
+                        Services.PLATFORM.markVaultDirty(player);
+                        Services.PLATFORM.sendVaultDelta(player, this.key, vaultData.getEntry(this.key));
+                    }
+                }
+            }
+            case CLEAR_CRAFTING_GRID -> {
+                if (player.containerMenu instanceof SoulsVaultMenu vaultMenu) {
+                    vaultMenu.clearCraftingGridToVaultOrInventory(player);
                 }
             }
             case DEPOSIT_ALL_CATEGORY -> {

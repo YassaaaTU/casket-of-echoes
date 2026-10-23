@@ -106,7 +106,7 @@ public class BottomlessCasketBlock extends HorizontalDirectionalBlock {
         );
         PlayerVaultData vaultData = Services.PLATFORM.getPlayerVaultData(serverPlayer);
         vaultData.performRestAndReplenish(serverPlayer);
-        Services.PLATFORM.syncFullVaultToClient(serverPlayer, vaultData);
+        Services.PLATFORM.openVaultMenu(serverPlayer, true);
     }
 
     @Override

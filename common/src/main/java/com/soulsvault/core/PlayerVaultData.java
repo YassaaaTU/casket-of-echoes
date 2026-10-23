@@ -55,7 +55,7 @@ public class PlayerVaultData {
     public List<VaultEntry> getEntriesByCategory(VaultCategory category) {
         List<VaultEntry> result = new ArrayList<>();
         for (VaultEntry entry : this.entries.values()) {
-            if (entry.getCategory() == category && entry.shouldRetain()) {
+            if (category.matches(entry.getCategory()) && entry.shouldRetain()) {
                 result.add(entry);
             }
         }
@@ -229,11 +229,14 @@ public class PlayerVaultData {
                 continue;
             }
             ItemKey key = ItemKey.fromStack(slotStack);
-            if (VaultCategory.classify(key) != category) {
+            if (!category.matches(key)) {
                 continue;
             }
 
             VaultEntry existing = this.entries.get(key);
+            if (category == VaultCategory.ALL && existing != null && existing.isFavorite()) {
+                continue;
+            }
             int allowedToDeposit = slotStack.getCount();
             if (existing != null && existing.isAutoRefill()) {
                 int currentTotal = carriedCounts.getOrDefault(key, 0);

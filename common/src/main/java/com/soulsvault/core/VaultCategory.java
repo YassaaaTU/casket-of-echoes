@@ -39,9 +39,10 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * The 7 Souls-like vault categories and cached auto-classification rules.
+ * The 8 Souls-like vault categories (ALL + 7 specialized tabs) and cached auto-classification rules.
  */
 public enum VaultCategory {
+    ALL("gui.soulsvault.category.all"),
     WEAPONS("gui.soulsvault.category.weapons"),
     RANGED_AMMO("gui.soulsvault.category.ranged_ammo"),
     ARMOR("gui.soulsvault.category.armor"),
@@ -64,6 +65,18 @@ public enum VaultCategory {
 
     public Component getDisplayName() {
         return Component.translatable(this.translationKey);
+    }
+
+    public boolean matches(VaultCategory itemCategory) {
+        return this == ALL || this == itemCategory;
+    }
+
+    public boolean matches(ItemStack stack) {
+        return this == ALL || classify(stack) == this;
+    }
+
+    public boolean matches(ItemKey key) {
+        return this == ALL || classify(key) == this;
     }
 
     public static void clearCache() {

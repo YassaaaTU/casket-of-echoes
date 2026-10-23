@@ -1,7 +1,7 @@
 package com.soulsvault.network;
 
 import com.soulsvault.Constants;
-import com.soulsvault.core.PlayerVaultData;
+import com.soulsvault.config.SoulsVaultConfig;
 import com.soulsvault.platform.Services;
 import com.soulsvault.world.entity.SpectralCasketEntity;
 import net.minecraft.core.BlockPos;
@@ -15,16 +15,24 @@ import javax.annotation.Nullable;
 import java.util.List;
 
 /**
- * Client-to-Server request to open the player's Casket of Echoes vault.
- * Validates that the player is within 6 blocks of a {@code #soulsvault:rest_points} block
- * or an active {@link SpectralCasketEntity}, then initiates chunked vault synchronization.
+ * Client-to-Server request to open the player's Souls Inventory / Casket of Echoes menu.
  */
 public final class PacketC2SOpenVault {
     @Nullable
     private final BlockPos restPos;
+    private final boolean fromInventoryReplacement;
 
     public PacketC2SOpenVault(@Nullable BlockPos restPos) {
+        this(restPos, false);
+    }
+
+    public PacketC2SOpenVault(@Nullable BlockPos restPos, boolean fromInventoryReplacement) {
         this.restPos = restPos;
+        this.fromInventoryReplacement = fromInventoryReplacement;
+    }
+
+    public static PacketC2SOpenVault openFromInventoryKey() {
+        return new PacketC2SOpenVault(null, true);
     }
 
     @Nullable
@@ -32,40 +40,47 @@ public final class PacketC2SOpenVault {
         return this.restPos;
     }
 
+    public boolean isFromInventoryReplacement() {
+        return this.fromInventoryReplacement;
+    }
+
     public void encode(FriendlyByteBuf buf) {
         buf.writeNullable(this.restPos, FriendlyByteBuf::writeBlockPos);
+        buf.writeBoolean(this.fromInventoryReplacement);
     }
 
     public static PacketC2SOpenVault decode(FriendlyByteBuf buf) {
         BlockPos pos = buf.readNullable(FriendlyByteBuf::readBlockPos);
-        return new PacketC2SOpenVault(pos);
+        boolean fromInv = buf.readableBytes() > 0 && buf.readBoolean();
+        return new PacketC2SOpenVault(pos, fromInv);
     }
 
     public void handleServer(ServerPlayer player) {
         if (player == null || player.isSpectator()) {
             return;
         }
+
+        boolean atRestPoint = false;
         if (this.restPos != null) {
             if (!player.level().isLoaded(this.restPos)) {
                 return;
             }
             double distSqr = player.distanceToSqr(Vec3.atCenterOf(this.restPos));
-            if (distSqr > Constants.REST_POINT_REACH_SQR) {
-                Constants.LOG.debug("Player {} too far from rest point {} (distSqr={})",
-                        player.getScoreboardName(), this.restPos, distSqr);
-                return;
+            if (distSqr <= Constants.REST_POINT_REACH_SQR) {
+                BlockState state = player.level().getBlockState(this.restPos);
+                if (state.is(Constants.REST_POINTS_TAG) || hasNearbySpectralCasket(player)) {
+                    atRestPoint = true;
+                }
             }
-            BlockState state = player.level().getBlockState(this.restPos);
-            if (!state.is(Constants.REST_POINTS_TAG) && !hasNearbySpectralCasket(player)) {
-                Constants.LOG.debug("Block {} at {} is not in #soulsvault:rest_points", state.getBlock(), this.restPos);
-                return;
-            }
-        } else if (!hasNearbySpectralCasket(player)) {
+        } else if (hasNearbySpectralCasket(player) || hasNearbyRestPointBlock(player)) {
+            atRestPoint = true;
+        }
+
+        if (!atRestPoint && !(this.fromInventoryReplacement && SoulsVaultConfig.isFullInventoryReplacement())) {
             return;
         }
 
-        PlayerVaultData vaultData = Services.PLATFORM.getPlayerVaultData(player);
-        Services.PLATFORM.syncFullVaultToClient(player, vaultData);
+        Services.PLATFORM.openVaultMenu(player, atRestPoint);
     }
 
     private static boolean hasNearbySpectralCasket(ServerPlayer player) {
@@ -75,5 +90,16 @@ public final class PacketC2SOpenVault {
                 Entity::isAlive
         );
         return !caskets.isEmpty();
+    }
+
+    private static boolean hasNearbyRestPointBlock(ServerPlayer player) {
+        BlockPos center = player.blockPosition();
+        int r = 4;
+        for (BlockPos pos : BlockPos.betweenClosed(center.offset(-r, -2, -r), center.offset(r, 2, r))) {
+            if (player.level().getBlockState(pos).is(Constants.REST_POINTS_TAG)) {
+                return true;
+            }
+        }
+        return false;
     }
 }
