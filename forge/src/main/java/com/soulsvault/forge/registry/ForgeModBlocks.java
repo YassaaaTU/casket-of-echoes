@@ -4,6 +4,7 @@ import com.soulsvault.Constants;
 import com.soulsvault.world.block.BottomlessCasketBlock;
 import com.soulsvault.world.entity.SpectralCasketEntity;
 import com.soulsvault.world.inventory.SoulsVaultMenu;
+import com.soulsvault.world.item.CasketSigilItem;
 import com.soulsvault.world.item.CasketUpgradeItem;
 import com.soulsvault.world.item.VestigeMothItem;
 import net.minecraft.world.entity.EntityType;
@@ -64,6 +65,11 @@ public final class ForgeModBlocks {
             () -> new CasketUpgradeItem(CasketUpgradeItem.Kind.ECHO_POUCH)
     );
 
+    public static final RegistryObject<CasketSigilItem> CASKET_SIGIL = ITEMS.register(
+            "casket_sigil",
+            CasketSigilItem::new
+    );
+
     public static final RegistryObject<EntityType<SpectralCasketEntity>> SPECTRAL_CASKET = ENTITY_TYPES.register(
             "spectral_casket",
             () -> EntityType.Builder.<SpectralCasketEntity>of(SpectralCasketEntity::new, MobCategory.MISC)
@@ -93,6 +99,7 @@ public final class ForgeModBlocks {
             event.accept(VESTIGE_MOTH);
             event.accept(RELIQUARY_SHARD);
             event.accept(ECHO_POUCH);
+            event.accept(CASKET_SIGIL);
         }
     }
 }

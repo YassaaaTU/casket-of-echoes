@@ -1,6 +1,7 @@
 package com.soulsvault.forge.event;
 
 import com.soulsvault.config.SoulsVaultConfig;
+import com.soulsvault.core.AttunementCommands;
 import com.soulsvault.core.EquipLoad;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.core.ReplenishCaps;
@@ -297,5 +298,6 @@ public final class ForgeServerEvents {
 
     private static void onRegisterCommands(final RegisterCommandsEvent event) {
         PartyCommands.register(event.getDispatcher());
+        AttunementCommands.register(event.getDispatcher());
     }
 }

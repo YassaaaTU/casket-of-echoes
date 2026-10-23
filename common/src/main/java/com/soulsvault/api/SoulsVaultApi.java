@@ -1,6 +1,7 @@
 package com.soulsvault.api;
 
 import com.soulsvault.Constants;
+import com.soulsvault.core.Attunement;
 import com.soulsvault.core.ItemKey;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.core.VaultAccess;
@@ -73,5 +74,19 @@ public final class SoulsVaultApi {
      */
     public static Component getAccessDenialReason(ServerPlayer player) {
         return VaultAccess.check(player, VaultAccess.Type.VAULT, false);
+    }
+
+    /**
+     * Whether the player may use their Casket under {@code vault.requireAttunement} (always true when it is off).
+     */
+    public static boolean isAttuned(ServerPlayer player) {
+        return Attunement.isAttuned(player);
+    }
+
+    /**
+     * Attunes the player to their Casket (with the title / sound ceremony), or seals it again with {@code false}.
+     */
+    public static void setAttuned(ServerPlayer player, boolean attuned) {
+        Attunement.setAttuned(player, attuned, true);
     }
 }

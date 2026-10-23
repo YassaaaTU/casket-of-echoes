@@ -304,7 +304,15 @@
   "gui.soulsvault.covenant.error.not_joined": "Join the Covenant Casket first.",
   "config.soulsvault.party.returnContributionsOnLeave": "Return Items When a Member Leaves",
   "config.soulsvault.party.upgradeCreditMinutes": "Membership Before Upgrades Count (min)",
+  "item.soulsvault.casket_sigil": "Casket Sigil",
+  "item.soulsvault.casket_sigil.desc": "Use to attune yourself to the Casket of Echoes.",
+  "item.soulsvault.casket_sigil.lore": "A seal that remembers the hand that breaks it.",
+  "item.soulsvault.casket_sigil.already": "The Casket already knows you.",
   "gui.soulsvault.notice.not_attuned": "The Casket does not know you yet",
   "gui.soulsvault.sealed.hint.attune": "Attune yourself with a Casket Sigil to break the seal.",
+  "gui.soulsvault.attuned.title": "CASKET ATTUNED",
+  "gui.soulsvault.attuned.subtitle": "Echoes of all you carry now rest within",
+  "commands.soulsvault.attune.success": "Attuned %s player(s) to their Casket",
+  "commands.soulsvault.attune.revoked": "Sealed the Casket of %s player(s)",
   "config.soulsvault.vault.requireAttunement": "Require Attunement"
 }
