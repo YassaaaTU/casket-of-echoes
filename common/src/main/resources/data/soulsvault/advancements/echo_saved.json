@@ -1,0 +1,22 @@
+{
+  "parent": "soulsvault:attuned",
+  "display": {
+    "icon": {
+      "item": "minecraft:armor_stand"
+    },
+    "title": {
+      "translate": "advancements.soulsvault.echo_saved.title"
+    },
+    "description": {
+      "translate": "advancements.soulsvault.echo_saved.description"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": false
+  },
+  "criteria": {
+    "granted": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "display": {
+    "icon": {
+      "item": "soulsvault:bottomless_casket"
+    },
+    "title": {
+      "translate": "advancements.soulsvault.root.title"
+    },
+    "description": {
+      "translate": "advancements.soulsvault.root.description"
+    },
+    "background": "minecraft:textures/block/polished_blackstone_bricks.png",
+    "show_toast": false,
+    "announce_to_chat": false
+  },
+  "criteria": {
+    "granted": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

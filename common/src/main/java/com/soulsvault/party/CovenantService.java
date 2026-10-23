@@ -4,6 +4,7 @@ import com.soulsvault.Constants;
 import com.soulsvault.config.SoulsVaultConfig;
 import com.soulsvault.core.CovenantLedger;
 import com.soulsvault.core.ItemKey;
+import com.soulsvault.core.Milestones;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.core.VaultStorage;
 import com.soulsvault.core.VaultSync;
@@ -108,6 +109,7 @@ public final class CovenantService {
             }
         }
         ledger.addMember(player.getUUID(), System.currentTimeMillis());
+        Milestones.award(player, Milestones.COVENANT_JOINED);
         PartyService.registry(server).markCovenant(party.key(), party.leader());
         PROMPTED.remove(player.getUUID());
 

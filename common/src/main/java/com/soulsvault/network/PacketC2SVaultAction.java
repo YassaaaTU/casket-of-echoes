@@ -1,6 +1,7 @@
 package com.soulsvault.network;
 
 import com.soulsvault.core.ItemKey;
+import com.soulsvault.core.Milestones;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.core.VaultAccess;
 import com.soulsvault.core.VaultCategory;
@@ -168,6 +169,9 @@ public final class PacketC2SVaultAction {
                     int target = (int) Math.max(1L, Math.min(Integer.MAX_VALUE, this.amount));
                     vaultData.configureRefill(this.key, autoRefill, target, overflowDeposit);
                     VaultSync.commitPrefs(player, this.key);
+                    if (autoRefill || overflowDeposit) {
+                        Milestones.award(player, Milestones.REFILL_PINNED);
+                    }
                 }
                 return;
             }
@@ -258,7 +262,10 @@ public final class PacketC2SVaultAction {
                 }
             }
             case REST_REPLENISH -> vaultData.performRestAndReplenish(player);
-            case LOAD_BUILD_ECHO -> VaultSync.commit(player, vaultData.loadBuildEcho(player, this.extraData));
+            case LOAD_BUILD_ECHO -> {
+                VaultSync.commit(player, vaultData.loadBuildEcho(player, this.extraData));
+                Milestones.award(player, Milestones.ECHO_SWAPPED);
+            }
             default -> {
             }
         }

@@ -543,6 +543,7 @@ public class PlayerVaultData {
             );
         }
         Services.PLATFORM.postRestReplenishPost(player, totalSweptToVault, totalRefilledToPlayer);
+        Milestones.award(player, Milestones.RESTED);
         return new RestReplenishResult(totalSweptToVault, totalRefilledToPlayer, changedKeys);
     }
 
@@ -601,6 +602,7 @@ public class PlayerVaultData {
                 player.getInventory().selected
         );
         putBuildEcho(echo);
+        Milestones.award(player, Milestones.ECHO_SAVED);
         return echo;
     }
 
@@ -856,6 +858,7 @@ public class PlayerVaultData {
         }
         VaultSync.commit(player, List.of(key));
         Services.PLATFORM.sendOverflowToast(player, key.toSingleStack(), (int) acceptedToVault, false);
+        Milestones.award(player, Milestones.OVERFLOW);
 
         return new PickupOverflowResult(true, insertedToInventory, (int) acceptedToVault, totalConsumed);
     }

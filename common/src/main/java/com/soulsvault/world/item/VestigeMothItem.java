@@ -2,6 +2,7 @@ package com.soulsvault.world.item;
 
 import com.soulsvault.config.SoulsVaultConfig;
 import com.soulsvault.core.Attunement;
+import com.soulsvault.core.Milestones;
 import com.soulsvault.platform.Services;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -77,6 +78,7 @@ public class VestigeMothItem extends Item {
 
             boolean spawned = Services.PLATFORM.spawnSpectralCasket(serverLevel, spawnPos, serverPlayer);
             if (spawned) {
+                Milestones.award(serverPlayer, Milestones.SPECTRAL_CASKET);
                 if (!creative) {
                     serverPlayer.giveExperienceLevels(-xpCost);
                     stack.shrink(1);

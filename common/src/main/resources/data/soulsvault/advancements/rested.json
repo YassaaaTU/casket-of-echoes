@@ -1,0 +1,22 @@
+{
+  "parent": "soulsvault:attuned",
+  "display": {
+    "icon": {
+      "item": "minecraft:campfire"
+    },
+    "title": {
+      "translate": "advancements.soulsvault.rested.title"
+    },
+    "description": {
+      "translate": "advancements.soulsvault.rested.description"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": false
+  },
+  "criteria": {
+    "granted": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

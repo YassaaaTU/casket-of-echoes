@@ -1,0 +1,22 @@
+{
+  "parent": "soulsvault:root",
+  "display": {
+    "icon": {
+      "item": "soulsvault:casket_sigil"
+    },
+    "title": {
+      "translate": "advancements.soulsvault.attuned.title"
+    },
+    "description": {
+      "translate": "advancements.soulsvault.attuned.description"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": false
+  },
+  "criteria": {
+    "granted": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

@@ -1,6 +1,7 @@
 package com.soulsvault.world.item;
 
 import com.soulsvault.config.SoulsVaultConfig;
+import com.soulsvault.core.Milestones;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.core.VaultStorage;
 import com.soulsvault.core.VaultSync;
@@ -73,6 +74,7 @@ public class CasketUpgradeItem extends Item {
             return null;
         }
         storage.addExpansion();
+        Milestones.award(player, Milestones.CASKET_EXPANDED);
         CovenantService.onExpansion(storage);
         VaultSync.resyncViewers(player.server, storage.getId());
         VaultSync.resync(player);
@@ -86,6 +88,7 @@ public class CasketUpgradeItem extends Item {
                     .withStyle(ChatFormatting.RED), true);
             return null;
         }
+        Milestones.award(player, Milestones.ECHO_SLOT_ADDED);
         VaultSync.resync(player);
         return Component.translatable("item.soulsvault.echo_pouch.used", vault.getEchoSlots());
     }
