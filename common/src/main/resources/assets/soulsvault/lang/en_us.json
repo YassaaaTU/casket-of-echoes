@@ -303,5 +303,6 @@
   "gui.soulsvault.covenant.join": "Join Covenant",
   "gui.soulsvault.covenant.error.not_joined": "Join the Covenant Casket first.",
   "config.soulsvault.party.returnContributionsOnLeave": "Return Items When a Member Leaves",
-  "config.soulsvault.party.upgradeCreditMinutes": "Membership Before Upgrades Count (min)"
+  "config.soulsvault.party.upgradeCreditMinutes": "Membership Before Upgrades Count (min)",
+  "config.soulsvault.vault.requireAttunement": "Require Attunement"
 }

@@ -43,6 +43,7 @@ public final class ForgeSoulsVaultConfig {
     private static final ForgeConfigSpec.LongValue MAX_STACK_CAPACITY;
     private static final ForgeConfigSpec.IntValue MAX_UNIQUE_ENTRIES;
     private static final ForgeConfigSpec.IntValue MAX_ITEM_NBT_BYTES;
+    private static final ForgeConfigSpec.BooleanValue REQUIRE_ATTUNEMENT;
     // rest points
     private static final ForgeConfigSpec.DoubleValue REST_REACH;
     private static final ForgeConfigSpec.BooleanValue REPLENISH_REQUIRES_REST_POINT;
@@ -134,6 +135,12 @@ public final class ForgeSoulsVaultConfig {
                         "Normal heavily-modded gear (Apotheosis affixes, Armourer's Workshop skins) stays far below the default.")
                 .translation(key("vault.maxItemNbtBytes"))
                 .defineInRange("maxItemNbtBytes", SoulsVaultConfig.Vault.DEFAULT.maxItemNbtBytes(), 0, 1048576);
+        REQUIRE_ATTUNEMENT = b.comment(
+                        "Casket Attunement: the Casket stays sealed (no storage, Rest & Replenish, Build Echo swaps, pickup",
+                        "overflow or Spectral Caskets) until the player uses a Casket Sigil or receives /casket attune,",
+                        "e.g. as a quest reward. Players who already used their Casket before this was turned on stay attuned.")
+                .translation(key("vault.requireAttunement"))
+                .define("requireAttunement", SoulsVaultConfig.Vault.DEFAULT.requireAttunement());
         b.pop();
 
         section(b, "restPoints", "Rest Points (#soulsvault:rest_points blocks, Bottomless Caskets, Spectral Caskets).");
@@ -356,7 +363,7 @@ public final class ForgeSoulsVaultConfig {
         return new SoulsVaultConfig.Settings(
                 new SoulsVaultConfig.Inventory(FULL_INVENTORY_REPLACEMENT.get(), ALLOW_REMOTE_VAULT_IN_FULL_INVENTORY.get()),
                 new SoulsVaultConfig.Vault(OVERFLOW_ON_FULL_INVENTORY.get(), MAX_STACK_CAPACITY.get(), MAX_UNIQUE_ENTRIES.get(),
-                        MAX_ITEM_NBT_BYTES.get()),
+                        MAX_ITEM_NBT_BYTES.get(), REQUIRE_ATTUNEMENT.get()),
                 new SoulsVaultConfig.RestPoints(REST_REACH.get(), REPLENISH_REQUIRES_REST_POINT.get(),
                         ECHO_SWAP_REQUIRES_REST_POINT.get(), REPLENISH_ON_WAKE_UP.get()),
                 new SoulsVaultConfig.Echoes(ECHO_BASE_SLOTS.get(), Math.max(ECHO_BASE_SLOTS.get(), ECHO_MAX_SLOTS.get())),

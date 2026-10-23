@@ -55,8 +55,9 @@ public final class SoulsVaultConfig {
      * @param maxUniqueEntries distinct items a Casket may hold ({@code <= 0}: unlimited)
      * @param maxItemNbtBytes  largest item NBT accepted, in bytes ({@code <= 0}: unlimited)
      */
-    public record Vault(boolean overflowOnFullInventory, long maxStackCapacity, int maxUniqueEntries, int maxItemNbtBytes) {
-        public static final Vault DEFAULT = new Vault(true, Constants.DEFAULT_MAX_STACK_CAPACITY, 0, 65536);
+    public record Vault(boolean overflowOnFullInventory, long maxStackCapacity, int maxUniqueEntries, int maxItemNbtBytes,
+                        boolean requireAttunement) {
+        public static final Vault DEFAULT = new Vault(true, Constants.DEFAULT_MAX_STACK_CAPACITY, 0, 65536, false);
     }
 
     public record RestPoints(
@@ -173,6 +174,7 @@ public final class SoulsVaultConfig {
             buf.writeVarLong(this.vault.maxStackCapacity());
             buf.writeVarInt(this.vault.maxUniqueEntries());
             buf.writeVarInt(this.vault.maxItemNbtBytes());
+            buf.writeBoolean(this.vault.requireAttunement());
 
             buf.writeDouble(this.restPoints.reachBlocks());
             buf.writeBoolean(this.restPoints.replenishRequiresRestPoint());
@@ -218,7 +220,7 @@ public final class SoulsVaultConfig {
 
         public static Settings decode(FriendlyByteBuf buf) {
             Inventory inventory = new Inventory(buf.readBoolean(), buf.readBoolean());
-            Vault vault = new Vault(buf.readBoolean(), buf.readVarLong(), buf.readVarInt(), buf.readVarInt());
+            Vault vault = new Vault(buf.readBoolean(), buf.readVarLong(), buf.readVarInt(), buf.readVarInt(), buf.readBoolean());
             RestPoints restPoints = new RestPoints(buf.readDouble(), buf.readBoolean(), buf.readBoolean(), buf.readBoolean());
             Echoes echoes = new Echoes(buf.readVarInt(), buf.readVarInt());
             FieldAccess fieldAccess = new FieldAccess(buf.readVarInt(), buf.readVarInt());
