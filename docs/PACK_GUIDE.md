@@ -9,7 +9,7 @@ Everything a pack can change without code. Server settings live in `<world>/serv
 | Section | What it controls |
 |---|---|
 | `inventory` | `fullInventoryReplacement` (E opens the Casket UI), `allowRemoteVaultInFullInventory` |
-| `vault` | overflow on full inventory, per-item cap, distinct-item cap (`0` = unlimited), max item NBT size |
+| `vault` | overflow on full inventory, per-item cap, distinct-item cap (`0` = unlimited), max item NBT size, `requireAttunement` |
 | `restPoints` | reach, `replenishRequiresRestPoint`, `echoSwapRequiresRestPoint`, `replenishOnWakeUp` |
 | `buildEchoes` | starting slots, max slots (raised by Echo Pouches) |
 | `fieldAccess` | Vestige Moth XP cost, Spectral Casket lifetime |
@@ -73,6 +73,30 @@ All matching items share the cap. Resting never refills past it; picking up or c
 Items without an entry use Epic Fight's weight, then a value derived from armor / attack stats. Capacity is
 `equipLoad.baseCapacity` plus the `soulsvault:equip_load_bonus` attribute, so any attribute modifier raises it.
 
+## Casket Attunement (progression gate)
+
+With `vault.requireAttunement = true` a player's Casket starts sealed: the Casket screen still opens (inventory,
+gear, crafting), but storage, Rest & Replenish, Build Echo swaps, pickup overflow and Vestige Moths are refused with
+"The Casket does not know you yet". Players attune by using a **Casket Sigil** (`soulsvault:casket_sigil`; override
+its recipe in a datapack to fit your progression) or through `/casket attune <players>` (e.g. an FTB Quests command
+reward). Caskets saved before the option was turned on stay attuned, and creative players are never sealed.
+
+### Milestone advancements
+
+Granted from code, shown in their own "Casket of Echoes" advancement tab, and usable as FTB Quests advancement tasks:
+
+| Advancement | Granted when |
+|---|---|
+| `soulsvault:attuned` | the player attunes |
+| `soulsvault:rested` | Rest & Replenish runs (Rest Point, button or waking up) |
+| `soulsvault:refill_pinned` | an item gets auto-refill or overflow-deposit turned on |
+| `soulsvault:overflow` | a world pickup overflows into the Casket |
+| `soulsvault:echo_saved` / `soulsvault:echo_swapped` | a Build Echo is saved / changed into |
+| `soulsvault:echo_slot_added` | an Echo Pouch is used |
+| `soulsvault:spectral_casket` | a Vestige Moth summons a Spectral Casket |
+| `soulsvault:casket_expanded` | a Reliquary Shard is used |
+| `soulsvault:covenant_joined` | the player joins a Covenant Casket |
+
 ## Covenant Caskets (shared party storage)
 
 - Each member chooses what happens to their own Casket before using the Covenant: merge, empty first, or override.
@@ -105,9 +129,11 @@ ForgeEvents.onEvent('com.soulsvault.forge.api.event.VaultAccessEvent', e => {
 ## Java API
 
 `com.soulsvault.api.SoulsVaultApi`: `getVault(player)`, `deposit(player, stack)`, `getAccessDenialReason(player)`,
-and `registerEchoSlotType(EchoSlotType)` to add Build Echo slot groups (quivers, spell pouches, belts).
+`isAttuned(player)`, `setAttuned(player, attuned)`, and `registerEchoSlotType(EchoSlotType)` to add Build Echo slot groups (quivers, spell pouches, belts).
 
 ## Commands
+
+`/casket attune <players> [true|false]` (permission level 2) attunes players, or seals their Casket again.
 
 `/casket party` (GUI), `create`, `invite <player> [merge|empty_first|override]`, `accept [policy] [confirm]`,
 `decline`, `leave`, `kick <member>`, `transfer <member>`, `disband`, `merge`.
