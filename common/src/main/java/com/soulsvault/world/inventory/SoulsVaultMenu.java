@@ -23,6 +23,7 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.CraftingContainer;
 import net.minecraft.world.inventory.DataSlot;
 import net.minecraft.world.inventory.ResultContainer;
@@ -105,6 +106,8 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
     private int equipEndIndex = -1;
     private int playerInvStartIndex = -1;
     private int playerInvEndIndex = -1;
+    /** Output items a shift-click on the result slot may still craft, or -1 outside such a click. */
+    private int quickCraftBudget = -1;
 
     private static final int LOCK_COMBAT = 1;
     private static final int LOCK_REMOTE_UNLOCKED = 1 << 1;
@@ -599,6 +602,10 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
 
         // 1. Shift-Clicking Crafting Result Slot (Index 0) -> Move to Player Inventory (Hotbar -> Main)
         if (index == this.craftResultSlotIndex) {
+            // At most one stack of output per shift-click, or the Vault refill would craft its entire supply
+            if (this.quickCraftBudget >= 0 && this.quickCraftBudget < copy.getCount()) {
+                return ItemStack.EMPTY;
+            }
             slotStack.getItem().onCraftedBy(slotStack, player.level(), player);
             if (!this.moveItemStackTo(slotStack, this.playerInvStartIndex, this.playerInvEndIndex, true)) {
                 return ItemStack.EMPTY;
@@ -616,22 +623,10 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
         // 3. Shift-Clicking Player Inventory (Main 27 + Hotbar 9):
         //    If in Crafting mode, move to 3x3 grid or Vault; if Vault access is allowed, deposit straight to Vault!
         else if (index >= this.playerInvStartIndex && index < this.playerInvEndIndex) {
-            // First check if item can be equipped into an empty Armor / Offhand / Accessory slot when in GEAR_CURIOS mode
-            if (this.leftPaneMode == LeftPaneMode.GEAR_CURIOS) {
-                EquipmentSlot eqTarget = Mob.getEquipmentSlotForItem(slotStack);
-                if (eqTarget.getType() == EquipmentSlot.Type.ARMOR) {
-                    int armorSlotIdx = this.equipStartIndex + (3 - eqTarget.getIndex());
-                    if (!this.slots.get(armorSlotIdx).hasItem()
-                            && this.moveItemStackTo(slotStack, armorSlotIdx, armorSlotIdx + 1, false)) {
-                        slot.setChanged();
-                        return copy;
-                    }
-                }
-                // Try active Curios/Aether accessory slots if empty
-                if (this.moveItemStackTo(slotStack, this.playerInvEndIndex, this.slots.size(), false)) {
-                    slot.setChanged();
-                    return copy;
-                }
+            // First check if item can be equipped into an empty Armor / Accessory slot when in GEAR_CURIOS mode
+            if (this.leftPaneMode == LeftPaneMode.GEAR_CURIOS && moveToEquipment(slotStack)) {
+                slot.setChanged();
+                return copy;
             }
 
             // Deposit into Vault when Vault access is active on the server
@@ -684,8 +679,56 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
         slot.onTake(player, slotStack);
         if (index == this.craftResultSlotIndex) {
             player.drop(slotStack, false);
+            if (this.quickCraftBudget >= 0) {
+                this.quickCraftBudget -= copy.getCount();
+            }
         }
         return copy;
+    }
+
+    /**
+     * Vanilla repeats {@link #quickMoveStack} on the result slot until the recipe stops matching; with the grid
+     * refilling from the Vault that would never stop, so a shift-click gets a budget of one output stack.
+     */
+    @Override
+    public void clicked(int slotId, int button, ClickType clickType, Player player) {
+        if (clickType != ClickType.QUICK_MOVE || slotId != this.craftResultSlotIndex) {
+            super.clicked(slotId, button, clickType, player);
+            return;
+        }
+        this.quickCraftBudget = this.slots.get(slotId).getItem().getMaxStackSize();
+        try {
+            super.clicked(slotId, button, clickType, player);
+        } finally {
+            this.quickCraftBudget = -1;
+        }
+    }
+
+    /**
+     * Shift-click equipping: slots on screen first (armor, then accessories), then real equipment slots that are
+     * hidden (armor behind the cosmetic view, accessories on other pages). Hidden cosmetic slots are never filled.
+     */
+    private boolean moveToEquipment(ItemStack stack) {
+        EquipmentSlot target = Mob.getEquipmentSlotForItem(stack);
+        int armorIndex = target.getType() == EquipmentSlot.Type.ARMOR ? this.equipStartIndex + (3 - target.getIndex()) : -1;
+        for (boolean onScreen : new boolean[]{true, false}) {
+            if (armorIndex >= 0) {
+                Slot armorSlot = this.slots.get(armorIndex);
+                if (armorSlot.isActive() == onScreen && !armorSlot.hasItem()
+                        && this.moveItemStackTo(stack, armorIndex, armorIndex + 1, false)) {
+                    return true;
+                }
+            }
+            for (int i = this.playerInvEndIndex; i < this.slots.size(); i++) {
+                if (this.slots.get(i) instanceof AccessoryMenuSlot accessory
+                        && accessory.isActive() == onScreen
+                        && (onScreen || accessory.isRealEquipment())
+                        && this.moveItemStackTo(stack, i, i + 1, false)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     @Override
@@ -853,6 +896,13 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
 
         public int getPage() {
             return this.page;
+        }
+
+        /**
+         * Worn for real (Curios / accessory slot), as opposed to a cosmetic Curios or Cosmetic Armor slot.
+         */
+        public boolean isRealEquipment() {
+            return !this.cosmeticGroup && !this.isArmorOverride;
         }
 
         @Nullable
