@@ -1,5 +1,7 @@
 package com.soulsvault;
 
+import com.soulsvault.api.SoulsVaultApi;
+import com.soulsvault.core.echo.HotbarEchoSlotType;
 import com.soulsvault.platform.Services;
 
 public final class CommonClass {
@@ -10,6 +12,7 @@ public final class CommonClass {
                 Constants.MOD_ID,
                 Services.PLATFORM.getPlatformName(),
                 Services.PLATFORM.getEnvironmentName());
+        SoulsVaultApi.registerEchoSlotType(HotbarEchoSlotType.INSTANCE);
     }
 
     private CommonClass() {
