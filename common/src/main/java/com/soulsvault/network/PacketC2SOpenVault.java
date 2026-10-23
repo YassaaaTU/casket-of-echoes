@@ -1,7 +1,9 @@
 package com.soulsvault.network;
 
-import com.soulsvault.Constants;
 import com.soulsvault.config.SoulsVaultConfig;
+import com.soulsvault.core.VaultAccess;
+import com.soulsvault.core.rest.RestPointProfile;
+import com.soulsvault.core.rest.RestPointProfiles;
 import com.soulsvault.platform.Services;
 import com.soulsvault.world.entity.SpectralCasketEntity;
 import net.minecraft.ChatFormatting;
@@ -10,8 +12,6 @@ import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.Vec3;
 
 import javax.annotation.Nullable;
 import java.util.List;
@@ -70,23 +70,22 @@ public final class PacketC2SOpenVault {
             return;
         }
 
-        boolean atRestPoint = false;
-        if (this.restPos != null) {
+        RestPointProfile profile = null;
+        if (hasNearbySpectralCasket(player)) {
+            profile = RestPointProfiles.SPECTRAL_CASKET;
+        } else if (this.restPos != null) {
             if (!player.level().isLoaded(this.restPos)) {
                 return;
             }
-            double distSqr = player.distanceToSqr(Vec3.atCenterOf(this.restPos));
-            if (distSqr <= Constants.REST_POINT_REACH_SQR) {
-                BlockState state = player.level().getBlockState(this.restPos);
-                if (state.is(Constants.REST_POINTS_TAG) || hasNearbySpectralCasket(player)) {
-                    atRestPoint = true;
-                }
+            RestPointProfile atPos = RestPointProfiles.find(player.level().getBlockState(this.restPos));
+            if (atPos != null && RestPointProfiles.inReach(player, this.restPos, atPos)) {
+                profile = atPos;
             }
-        } else if (hasNearbySpectralCasket(player) || hasNearbyRestPointBlock(player)) {
-            atRestPoint = true;
+        } else {
+            profile = RestPointProfiles.findNearby(player);
         }
 
-        if (!atRestPoint && !(this.fromInventoryReplacement && SoulsVaultConfig.isFullInventoryReplacement())) {
+        if (profile == null && !(this.fromInventoryReplacement && SoulsVaultConfig.isFullInventoryReplacement())) {
             player.displayClientMessage(
                     Component.translatable("gui.soulsvault.notice.rest_point_required").withStyle(ChatFormatting.RED),
                     true
@@ -94,26 +93,21 @@ public final class PacketC2SOpenVault {
             return;
         }
 
-        Services.PLATFORM.openVaultMenu(player, atRestPoint);
+        RestPointProfile.Grants grants = profile != null ? profile.grants() : RestPointProfile.Grants.NONE;
+        Component denied = VaultAccess.check(player, VaultAccess.Type.OPEN, grants.any());
+        if (denied != null) {
+            player.displayClientMessage(denied.copy().withStyle(ChatFormatting.RED), true);
+            return;
+        }
+        Services.PLATFORM.openVaultMenu(player, grants);
     }
 
     private static boolean hasNearbySpectralCasket(ServerPlayer player) {
         List<SpectralCasketEntity> caskets = player.level().getEntitiesOfClass(
                 SpectralCasketEntity.class,
-                player.getBoundingBox().inflate(Constants.REST_POINT_REACH_BLOCKS),
+                player.getBoundingBox().inflate(SoulsVaultConfig.restPoints().reachBlocks()),
                 Entity::isAlive
         );
         return !caskets.isEmpty();
-    }
-
-    private static boolean hasNearbyRestPointBlock(ServerPlayer player) {
-        BlockPos center = player.blockPosition();
-        int r = 4;
-        for (BlockPos pos : BlockPos.betweenClosed(center.offset(-r, -2, -r), center.offset(r, 2, r))) {
-            if (player.level().getBlockState(pos).is(Constants.REST_POINTS_TAG)) {
-                return true;
-            }
-        }
-        return false;
     }
 }

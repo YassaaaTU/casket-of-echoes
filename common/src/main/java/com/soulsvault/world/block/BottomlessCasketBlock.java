@@ -1,10 +1,15 @@
 package com.soulsvault.world.block;
 
 import com.soulsvault.core.PlayerVaultData;
+import com.soulsvault.core.VaultAccess;
+import com.soulsvault.core.rest.RestPointProfile;
+import com.soulsvault.core.rest.RestPointProfiles;
 import com.soulsvault.platform.Services;
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -95,7 +100,24 @@ public class BottomlessCasketBlock extends HorizontalDirectionalBlock {
         return InteractionResult.sidedSuccess(level.isClientSide);
     }
 
+    /**
+     * Opens the Casket at a Rest Point block (or the Bottomless Casket), resting first when the block's profile allows.
+     */
     public static void openCasketForPlayer(ServerPlayer serverPlayer, BlockPos restPos) {
+        RestPointProfile profile = RestPointProfiles.find(serverPlayer.level().getBlockState(restPos));
+        openCasketForPlayer(serverPlayer, restPos, profile != null ? profile : RestPointProfiles.TAGGED_DEFAULT);
+    }
+
+    /**
+     * Opens the Casket with a Rest Point profile: rests (replenish + the profile's resting effects) unless
+     * combat-locked, then opens the screen with the profile's session powers.
+     */
+    public static void openCasketForPlayer(ServerPlayer serverPlayer, BlockPos restPos, RestPointProfile profile) {
+        Component denied = VaultAccess.check(serverPlayer, VaultAccess.Type.OPEN, profile.grants().any());
+        if (denied != null) {
+            serverPlayer.displayClientMessage(denied.copy().withStyle(ChatFormatting.RED), true);
+            return;
+        }
         serverPlayer.level().playSound(
                 null,
                 restPos,
@@ -104,9 +126,17 @@ public class BottomlessCasketBlock extends HorizontalDirectionalBlock {
                 0.55F,
                 0.65F
         );
-        PlayerVaultData vaultData = Services.PLATFORM.getPlayerVaultData(serverPlayer);
-        vaultData.performRestAndReplenish(serverPlayer);
-        Services.PLATFORM.openVaultMenu(serverPlayer, true);
+        Component restDenied = VaultAccess.check(serverPlayer, VaultAccess.Type.REST, profile.grants().replenish());
+        if (restDenied == null) {
+            RestPointProfiles.applyRestEffects(serverPlayer, profile);
+            if (profile.grants().replenish()) {
+                PlayerVaultData vaultData = Services.PLATFORM.getPlayerVaultData(serverPlayer);
+                vaultData.performRestAndReplenish(serverPlayer);
+            }
+        } else {
+            serverPlayer.displayClientMessage(restDenied.copy().withStyle(ChatFormatting.RED), true);
+        }
+        Services.PLATFORM.openVaultMenu(serverPlayer, profile.grants());
     }
 
     @Override

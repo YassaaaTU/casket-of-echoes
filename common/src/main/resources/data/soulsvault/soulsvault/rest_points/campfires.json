@@ -1,0 +1,15 @@
+{
+  "blocks": [
+    "minecraft:campfire",
+    "minecraft:soul_campfire"
+  ],
+  "priority": 0,
+  "requires_lit": true,
+  "vault_access": true,
+  "replenish": true,
+  "echo_swap": true,
+  "set_spawn": false,
+  "heal": false,
+  "feed": false,
+  "clear_harmful_effects": false
+}

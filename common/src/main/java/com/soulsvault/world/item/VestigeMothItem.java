@@ -1,6 +1,6 @@
 package com.soulsvault.world.item;
 
-import com.soulsvault.Constants;
+import com.soulsvault.config.SoulsVaultConfig;
 import com.soulsvault.platform.Services;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -44,10 +44,11 @@ public class VestigeMothItem extends Item {
         }
 
         boolean creative = player.getAbilities().instabuild;
-        if (!creative && player.experienceLevel < Constants.VESTIGE_MOTH_XP_LEVEL_COST) {
+        int xpCost = SoulsVaultConfig.fieldAccess().vestigeMothXpLevelCost();
+        if (!creative && player.experienceLevel < xpCost) {
             if (level.isClientSide) {
                 player.displayClientMessage(
-                        Component.translatable("item.soulsvault.vestige_moth.no_xp", Constants.VESTIGE_MOTH_XP_LEVEL_COST)
+                        Component.translatable("item.soulsvault.vestige_moth.no_xp", xpCost)
                                 .withStyle(ChatFormatting.RED),
                         true
                 );
@@ -68,7 +69,7 @@ public class VestigeMothItem extends Item {
             boolean spawned = Services.PLATFORM.spawnSpectralCasket(serverLevel, spawnPos, serverPlayer);
             if (spawned) {
                 if (!creative) {
-                    serverPlayer.giveExperienceLevels(-Constants.VESTIGE_MOTH_XP_LEVEL_COST);
+                    serverPlayer.giveExperienceLevels(-xpCost);
                     stack.shrink(1);
                 }
                 serverPlayer.getCooldowns().addCooldown(this, 40);
@@ -99,7 +100,11 @@ public class VestigeMothItem extends Item {
             TooltipFlag isAdvanced
     ) {
         tooltipComponents.add(
-                Component.translatable("item.soulsvault.vestige_moth.desc", Constants.VESTIGE_MOTH_XP_LEVEL_COST)
+                Component.translatable(
+                        "item.soulsvault.vestige_moth.desc",
+                        SoulsVaultConfig.fieldAccess().spectralCasketLifetimeSeconds(),
+                        SoulsVaultConfig.fieldAccess().vestigeMothXpLevelCost()
+                )
                         .withStyle(ChatFormatting.AQUA)
         );
     }

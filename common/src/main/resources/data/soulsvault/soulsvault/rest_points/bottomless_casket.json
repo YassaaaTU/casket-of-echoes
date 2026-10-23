@@ -1,0 +1,9 @@
+{
+  "blocks": [
+    "soulsvault:bottomless_casket"
+  ],
+  "priority": 0,
+  "vault_access": true,
+  "replenish": true,
+  "echo_swap": true
+}

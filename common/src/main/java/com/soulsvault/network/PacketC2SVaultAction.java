@@ -2,14 +2,19 @@ package com.soulsvault.network;
 
 import com.soulsvault.core.ItemKey;
 import com.soulsvault.core.PlayerVaultData;
+import com.soulsvault.core.VaultAccess;
 import com.soulsvault.core.VaultCategory;
-import com.soulsvault.core.VaultEntry;
+import com.soulsvault.core.VaultRules;
+import com.soulsvault.core.VaultSync;
 import com.soulsvault.platform.Services;
 import com.soulsvault.world.inventory.SoulsVaultMenu;
+import net.minecraft.ChatFormatting;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
@@ -31,7 +36,8 @@ public final class PacketC2SVaultAction {
         SET_REFILL_TARGET,
         REST_REPLENISH,
         SAVE_BUILD_ECHO,
-        LOAD_BUILD_ECHO
+        LOAD_BUILD_ECHO,
+        UNLOCK_REMOTE
     }
 
     private final ActionType action;
@@ -96,6 +102,10 @@ public final class PacketC2SVaultAction {
         return new PacketC2SVaultAction(ActionType.LOAD_BUILD_ECHO, ItemKey.EMPTY, 0L, echoIndex);
     }
 
+    public static PacketC2SVaultAction unlockRemoteAccess() {
+        return new PacketC2SVaultAction(ActionType.UNLOCK_REMOTE, ItemKey.EMPTY, 0L, 0);
+    }
+
     public ActionType getAction() {
         return this.action;
     }
@@ -136,25 +146,66 @@ public final class PacketC2SVaultAction {
         if (!(player.containerMenu instanceof SoulsVaultMenu vaultMenu)) {
             return;
         }
-        if (!vaultMenu.isVaultAccessAllowed() && this.action != ActionType.CLEAR_CRAFTING_GRID) {
+        PlayerVaultData vaultData = Services.PLATFORM.getPlayerVaultData(player);
+
+        // Actions that never move items between the player and the Vault are always allowed.
+        switch (this.action) {
+            case CLEAR_CRAFTING_GRID -> {
+                vaultMenu.clearCraftingGridToVaultOrInventory(player);
+                return;
+            }
+            case TOGGLE_FAVORITE -> {
+                if (!this.key.isEmpty()) {
+                    vaultData.toggleFavorite(this.key);
+                    VaultSync.commitPrefs(player, this.key);
+                }
+                return;
+            }
+            case SET_REFILL_TARGET -> {
+                if (!this.key.isEmpty()) {
+                    boolean autoRefill = (this.extraData & FLAG_AUTO_REFILL) != 0;
+                    boolean overflowDeposit = (this.extraData & FLAG_OVERFLOW_DEPOSIT) != 0;
+                    int target = (int) Math.max(1L, Math.min(Integer.MAX_VALUE, this.amount));
+                    vaultData.configureRefill(this.key, autoRefill, target, overflowDeposit);
+                    VaultSync.commitPrefs(player, this.key);
+                }
+                return;
+            }
+            case SAVE_BUILD_ECHO -> {
+                vaultData.saveBuildEcho(player, this.extraData);
+                Services.PLATFORM.syncFullVaultToClient(player, vaultData);
+                return;
+            }
+            case UNLOCK_REMOTE -> {
+                vaultMenu.tryUnlockRemoteAccess(player);
+                return;
+            }
+            default -> {
+            }
+        }
+
+        Component denied = vaultMenu.getVaultDenialReason(player);
+        if (denied == null && this.action == ActionType.REST_REPLENISH) {
+            denied = VaultAccess.check(player, VaultAccess.Type.REST, vaultMenu.getGrants().replenish());
+        } else if (denied == null && this.action == ActionType.LOAD_BUILD_ECHO) {
+            denied = VaultAccess.check(player, VaultAccess.Type.ECHO_SWAP, vaultMenu.getGrants().echoSwap());
+        }
+        if (denied != null) {
+            player.displayClientMessage(denied.copy().withStyle(ChatFormatting.RED), true);
             return;
         }
 
-        PlayerVaultData vaultData = Services.PLATFORM.getPlayerVaultData(player);
-
         switch (this.action) {
             case DEPOSIT -> {
-                long deposited = vaultData.depositFromPlayerInventory(player, this.key, this.amount);
-                if (deposited > 0L) {
-                    Services.PLATFORM.markVaultDirty(player);
-                    Services.PLATFORM.sendVaultDelta(player, this.key, vaultData.getEntry(this.key));
+                if (vaultData.depositFromPlayerInventory(player, this.key, this.amount) > 0L) {
+                    VaultSync.commit(player, List.of(this.key));
+                } else {
+                    reportRejected(player, this.key);
                 }
             }
             case WITHDRAW -> {
-                long withdrawn = vaultData.withdrawToPlayerInventory(player, this.key, this.amount);
-                if (withdrawn > 0L) {
-                    Services.PLATFORM.markVaultDirty(player);
-                    Services.PLATFORM.sendVaultDelta(player, this.key, vaultData.getEntry(this.key));
+                if (vaultData.withdrawToPlayerInventory(player, this.key, this.amount) > 0L) {
+                    VaultSync.commit(player, List.of(this.key));
                 }
             }
             case DEPOSIT_CARRIED -> {
@@ -167,8 +218,9 @@ public final class PacketC2SVaultAction {
                         carried.shrink((int) accepted);
                         player.containerMenu.setCarried(carried.isEmpty() ? ItemStack.EMPTY : carried);
                         player.containerMenu.broadcastChanges();
-                        Services.PLATFORM.markVaultDirty(player);
-                        Services.PLATFORM.sendVaultDelta(player, carriedKey, vaultData.getEntry(carriedKey));
+                        VaultSync.commit(player, List.of(carriedKey));
+                    } else {
+                        reportRejected(player, carriedKey);
                     }
                 }
             }
@@ -184,8 +236,7 @@ public final class PacketC2SVaultAction {
                     if (withdrawn > 0L) {
                         player.containerMenu.setCarried(this.key.toStack((int) withdrawn));
                         player.containerMenu.broadcastChanges();
-                        Services.PLATFORM.markVaultDirty(player);
-                        Services.PLATFORM.sendVaultDelta(player, this.key, vaultData.getEntry(this.key));
+                        VaultSync.commit(player, List.of(this.key));
                     }
                 } else if (this.key.matches(carried) && carried.getCount() < maxStack) {
                     int space = maxStack - carried.getCount();
@@ -195,57 +246,28 @@ public final class PacketC2SVaultAction {
                         carried.grow((int) withdrawn);
                         player.containerMenu.setCarried(carried);
                         player.containerMenu.broadcastChanges();
-                        Services.PLATFORM.markVaultDirty(player);
-                        Services.PLATFORM.sendVaultDelta(player, this.key, vaultData.getEntry(this.key));
+                        VaultSync.commit(player, List.of(this.key));
                     }
                 }
             }
-            case CLEAR_CRAFTING_GRID -> vaultMenu.clearCraftingGridToVaultOrInventory(player);
             case DEPOSIT_ALL_CATEGORY -> {
                 VaultCategory[] categories = VaultCategory.values();
                 if (this.extraData >= 0 && this.extraData < categories.length) {
-                    VaultCategory category = categories[this.extraData];
-                    Set<ItemKey> modified = vaultData.depositAllInCategory(player, category);
-                    if (!modified.isEmpty()) {
-                        Services.PLATFORM.markVaultDirty(player);
-                        for (ItemKey modKey : modified) {
-                            Services.PLATFORM.sendVaultDelta(player, modKey, vaultData.getEntry(modKey));
-                        }
-                    }
-                }
-            }
-            case TOGGLE_FAVORITE -> {
-                if (!this.key.isEmpty()) {
-                    VaultEntry updated = vaultData.toggleFavorite(this.key);
-                    Services.PLATFORM.markVaultDirty(player);
-                    Services.PLATFORM.sendVaultDelta(player, this.key, updated);
-                }
-            }
-            case SET_REFILL_TARGET -> {
-                if (!this.key.isEmpty()) {
-                    boolean autoRefill = (this.extraData & FLAG_AUTO_REFILL) != 0;
-                    boolean overflowDeposit = (this.extraData & FLAG_OVERFLOW_DEPOSIT) != 0;
-                    int target = (int) Math.max(1L, Math.min(Integer.MAX_VALUE, this.amount));
-                    VaultEntry updated = vaultData.configureRefill(this.key, autoRefill, target, overflowDeposit);
-                    Services.PLATFORM.markVaultDirty(player);
-                    Services.PLATFORM.sendVaultDelta(player, this.key, updated);
+                    Set<ItemKey> modified = vaultData.depositAllInCategory(player, categories[this.extraData]);
+                    VaultSync.commit(player, modified);
                 }
             }
             case REST_REPLENISH -> vaultData.performRestAndReplenish(player);
-            case SAVE_BUILD_ECHO -> {
-                vaultData.saveBuildEcho(player, this.extraData, "Echo " + (this.extraData + 1));
-                Services.PLATFORM.markVaultDirty(player);
-                Services.PLATFORM.syncFullVaultToClient(player, vaultData);
+            case LOAD_BUILD_ECHO -> VaultSync.commit(player, vaultData.loadBuildEcho(player, this.extraData));
+            default -> {
             }
-            case LOAD_BUILD_ECHO -> {
-                Set<ItemKey> modified = vaultData.loadBuildEcho(player, this.extraData);
-                if (!modified.isEmpty()) {
-                    Services.PLATFORM.markVaultDirty(player);
-                    for (ItemKey modKey : modified) {
-                        Services.PLATFORM.sendVaultDelta(player, modKey, vaultData.getEntry(modKey));
-                    }
-                }
-            }
+        }
+    }
+
+    private static void reportRejected(ServerPlayer player, ItemKey key) {
+        Component reason = VaultRules.getRejectionReason(key);
+        if (reason != null) {
+            player.displayClientMessage(reason.copy().withStyle(ChatFormatting.RED), true);
         }
     }
 }

@@ -4,10 +4,17 @@ import com.soulsvault.config.SoulsVaultConfig;
 import com.soulsvault.core.AccessorySlotAccess;
 import com.soulsvault.core.ItemKey;
 import com.soulsvault.core.PlayerVaultData;
+import com.soulsvault.core.VaultAccess;
+import com.soulsvault.core.VaultRules;
+import com.soulsvault.core.VaultSync;
+import com.soulsvault.core.rest.RestPointProfile;
 import com.soulsvault.platform.Services;
+import net.minecraft.ChatFormatting;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
 import net.minecraft.world.SimpleContainer;
@@ -17,10 +24,12 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.CraftingContainer;
+import net.minecraft.world.inventory.DataSlot;
 import net.minecraft.world.inventory.ResultContainer;
 import net.minecraft.world.inventory.ResultSlot;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.inventory.TransientCraftingContainer;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.RecipeType;
@@ -77,7 +86,7 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
     }
 
     private final Player player;
-    private final boolean openedAtRestPoint;
+    private final RestPointProfile.Grants grants;
     private final CraftingContainer craftSlots = new TransientCraftingContainer(this, 3, 3);
     private final ResultContainer resultSlots = new ResultContainer();
 
@@ -97,14 +106,26 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
     private int playerInvStartIndex = -1;
     private int playerInvEndIndex = -1;
 
+    private static final int LOCK_COMBAT = 1;
+    private static final int LOCK_REMOTE_UNLOCKED = 1 << 1;
+    private static final int LOCK_REFRESH_TICKS = 10;
+    /** Synced to the client: combat lock and whether the remote access cost was paid this session. */
+    private final DataSlot lockState = DataSlot.standalone();
+    private int lockRefreshCountdown = 0;
+
     public SoulsVaultMenu(int containerId, Inventory playerInventory, FriendlyByteBuf extraData) {
-        this(containerId, playerInventory, extraData != null && extraData.readableBytes() > 0 && extraData.readBoolean());
+        this(containerId, playerInventory, extraData != null && extraData.readableBytes() > 0
+                ? RestPointProfile.Grants.decode(extraData)
+                : RestPointProfile.Grants.NONE);
     }
 
-    public SoulsVaultMenu(int containerId, Inventory playerInventory, boolean openedAtRestPoint) {
+    /**
+     * @param grants session powers from the Rest Point profile it was opened at ({@code NONE} when opened remotely)
+     */
+    public SoulsVaultMenu(int containerId, Inventory playerInventory, RestPointProfile.Grants grants) {
         super(Services.PLATFORM.getVaultMenuType(), containerId);
         this.player = playerInventory.player;
-        this.openedAtRestPoint = openedAtRestPoint;
+        this.grants = grants != null ? grants : RestPointProfile.Grants.NONE;
 
         // 1. Crafting Result Slot (Index 0) + 3x3 Crafting Matrix (Indices 1..9)
         this.craftResultSlotIndex = this.slots.size();
@@ -165,6 +186,8 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
 
         // 5. Dynamic Curios / Aether Accessories & Cosmetic Armor Slots
         initAccessorySlots();
+
+        this.addDataSlot(this.lockState);
     }
 
     private void initAccessorySlots() {
@@ -209,12 +232,126 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
         }
     }
 
+    /**
+     * Whether Vault deposits/withdrawals are allowed right now: at a Rest Point, or remotely when the server allows
+     * it and any remote access cost was paid; never while combat-locked. Mirrors on the client via a data slot.
+     */
     public boolean isVaultAccessAllowed() {
-        return this.openedAtRestPoint || SoulsVaultConfig.isAllowRemoteVaultInFullInventory();
+        if (isCombatLocked()) {
+            return false;
+        }
+        if (this.grants.vault()) {
+            return true;
+        }
+        return SoulsVaultConfig.isAllowRemoteVaultInFullInventory() && !needsRemoteUnlock();
+    }
+
+    public boolean isCombatLocked() {
+        return (this.lockState.get() & LOCK_COMBAT) != 0;
+    }
+
+    /**
+     * Whether the Vault pane shows the "unlock for a cost" button (remote session, cost configured, not yet paid).
+     */
+    public boolean needsRemoteUnlock() {
+        return !this.grants.vault()
+                && SoulsVaultConfig.isAllowRemoteVaultInFullInventory()
+                && SoulsVaultConfig.remoteAccess().hasCost()
+                && (this.lockState.get() & LOCK_REMOTE_UNLOCKED) == 0;
+    }
+
+    /**
+     * Server-side reason Vault deposits/withdrawals are refused, or {@code null}.
+     */
+    @Nullable
+    public Component getVaultDenialReason(ServerPlayer serverPlayer) {
+        if (!this.grants.vault() && !SoulsVaultConfig.isAllowRemoteVaultInFullInventory()) {
+            return Component.translatable("gui.soulsvault.notice.rest_point_required");
+        }
+        if (needsRemoteUnlock()) {
+            return Component.translatable("gui.soulsvault.notice.remote_locked");
+        }
+        return VaultAccess.check(serverPlayer, VaultAccess.Type.VAULT, this.grants.vault());
+    }
+
+    /**
+     * Charges the configured remote access cost once for this Casket session.
+     */
+    public void tryUnlockRemoteAccess(ServerPlayer serverPlayer) {
+        if (!needsRemoteUnlock()) {
+            return;
+        }
+        SoulsVaultConfig.RemoteAccess cost = SoulsVaultConfig.remoteAccess();
+        boolean paid = serverPlayer.getAbilities().instabuild || switch (cost.costType()) {
+            case XP_LEVELS -> {
+                if (serverPlayer.experienceLevel < cost.costAmount()) {
+                    yield false;
+                }
+                serverPlayer.giveExperienceLevels(-cost.costAmount());
+                yield true;
+            }
+            case XP_POINTS -> {
+                if (serverPlayer.totalExperience < cost.costAmount()) {
+                    yield false;
+                }
+                serverPlayer.giveExperiencePoints(-cost.costAmount());
+                yield true;
+            }
+            case ITEM -> payWithItems(serverPlayer, cost);
+            case NONE -> true;
+        };
+        if (!paid) {
+            serverPlayer.displayClientMessage(Component.translatable("gui.soulsvault.notice.remote_cost_unaffordable")
+                    .withStyle(ChatFormatting.RED), true);
+            return;
+        }
+        this.lockState.set(this.lockState.get() | LOCK_REMOTE_UNLOCKED);
+        this.broadcastChanges();
+    }
+
+    private static boolean payWithItems(ServerPlayer serverPlayer, SoulsVaultConfig.RemoteAccess cost) {
+        ResourceLocation id = ResourceLocation.tryParse(cost.costItem());
+        Item item = id != null ? BuiltInRegistries.ITEM.get(id) : null;
+        if (item == null) {
+            return false;
+        }
+        Inventory inventory = serverPlayer.getInventory();
+        if (inventory.countItem(item) < cost.costAmount()) {
+            return false;
+        }
+        int remaining = cost.costAmount();
+        for (int i = 0; i < inventory.items.size() && remaining > 0; i++) {
+            ItemStack stack = inventory.items.get(i);
+            if (stack.is(item)) {
+                int take = Math.min(remaining, stack.getCount());
+                stack.shrink(take);
+                remaining -= take;
+            }
+        }
+        PlayerVaultData.syncPlayerInventory(serverPlayer);
+        return true;
+    }
+
+    @Override
+    public void broadcastChanges() {
+        if (this.player instanceof ServerPlayer serverPlayer && --this.lockRefreshCountdown <= 0) {
+            this.lockRefreshCountdown = LOCK_REFRESH_TICKS;
+            boolean combat = VaultAccess.getCombatReason(serverPlayer) != null;
+            int state = this.lockState.get();
+            this.lockState.set(combat ? state | LOCK_COMBAT : state & ~LOCK_COMBAT);
+        }
+        super.broadcastChanges();
     }
 
     public boolean isOpenedAtRestPoint() {
-        return this.openedAtRestPoint;
+        return this.grants.any();
+    }
+
+    /**
+     * Powers granted by the Rest Point profile this session was opened at.
+     */
+    public RestPointProfile.Grants getGrants() {
+        return this.grants;
     }
 
     public LeftPaneMode getLeftPaneMode() {
@@ -348,12 +485,7 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
         this.slotsChanged(this.craftSlots);
         this.broadcastChanges();
 
-        if (!modifiedVaultKeys.isEmpty()) {
-            Services.PLATFORM.markVaultDirty(serverPlayer);
-            for (ItemKey key : modifiedVaultKeys) {
-                Services.PLATFORM.sendVaultDelta(serverPlayer, key, vaultData.getEntry(key));
-            }
-        }
+        VaultSync.commit(serverPlayer, modifiedVaultKeys);
     }
 
     /**
@@ -404,12 +536,7 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
             }
         }
 
-        if (!modifiedVaultKeys.isEmpty()) {
-            Services.PLATFORM.markVaultDirty(serverPlayer);
-            for (ItemKey key : modifiedVaultKeys) {
-                Services.PLATFORM.sendVaultDelta(serverPlayer, key, vaultData.getEntry(key));
-            }
-        }
+        VaultSync.commit(serverPlayer, modifiedVaultKeys);
         PlayerVaultData.syncPlayerInventory(serverPlayer);
         this.slotsChanged(this.craftSlots);
         this.broadcastChanges();
@@ -521,9 +648,12 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
                             slot.setChanged();
                         }
                         PlayerVaultData.syncPlayerInventory(serverPlayer);
-                        Services.PLATFORM.markVaultDirty(serverPlayer);
-                        Services.PLATFORM.sendVaultDelta(serverPlayer, key, vaultData.getEntry(key));
+                        VaultSync.commit(serverPlayer, List.of(key));
                         return copy;
+                    }
+                    Component rejected = VaultRules.getRejectionReason(key);
+                    if (rejected != null) {
+                        serverPlayer.displayClientMessage(rejected.copy().withStyle(ChatFormatting.RED), true);
                     }
                 } else if (player.level().isClientSide) {
                     return ItemStack.EMPTY;
@@ -619,12 +749,7 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
                     }
                 }
 
-                if (!modifiedVaultKeys.isEmpty()) {
-                    Services.PLATFORM.markVaultDirty(serverPlayer);
-                    for (ItemKey modKey : modifiedVaultKeys) {
-                        Services.PLATFORM.sendVaultDelta(serverPlayer, modKey, vaultData.getEntry(modKey));
-                    }
-                }
+                VaultSync.commit(serverPlayer, modifiedVaultKeys);
             }
 
             SoulsVaultMenu.this.slotsChanged(SoulsVaultMenu.this.craftSlots);

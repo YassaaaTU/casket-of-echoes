@@ -1,6 +1,7 @@
 package com.soulsvault.world.entity;
 
-import com.soulsvault.Constants;
+import com.soulsvault.config.SoulsVaultConfig;
+import com.soulsvault.core.rest.RestPointProfiles;
 import com.soulsvault.world.block.BottomlessCasketBlock;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.particles.ParticleTypes;
@@ -46,7 +47,11 @@ public class SpectralCasketEntity extends Entity {
 
     @Override
     protected void defineSynchedData() {
-        this.entityData.define(DATA_REMAINING_TICKS, Constants.SPECTRAL_CASKET_LIFETIME_TICKS);
+        this.entityData.define(DATA_REMAINING_TICKS, lifetimeTicks());
+    }
+
+    private static int lifetimeTicks() {
+        return Math.max(1, SoulsVaultConfig.fieldAccess().spectralCasketLifetimeSeconds()) * 20;
     }
 
     public int getRemainingTicks() {
@@ -83,7 +88,7 @@ public class SpectralCasketEntity extends Entity {
         } else {
             remaining--;
             setRemainingTicks(remaining);
-            if (remaining % 20 == 0 || remaining == Constants.SPECTRAL_CASKET_LIFETIME_TICKS - 1) {
+            if (remaining % 20 == 0 || remaining == lifetimeTicks() - 1) {
                 int secondsLeft = Math.max(1, (remaining + 19) / 20);
                 this.setCustomName(Component.translatable("entity.soulsvault.spectral_casket")
                         .append(Component.literal(" (" + secondsLeft + "s)").withStyle(ChatFormatting.AQUA)));
@@ -114,7 +119,7 @@ public class SpectralCasketEntity extends Entity {
             return InteractionResult.PASS;
         }
         if (!this.level().isClientSide && player instanceof ServerPlayer serverPlayer) {
-            BottomlessCasketBlock.openCasketForPlayer(serverPlayer, this.blockPosition());
+            BottomlessCasketBlock.openCasketForPlayer(serverPlayer, this.blockPosition(), RestPointProfiles.SPECTRAL_CASKET);
         }
         return InteractionResult.sidedSuccess(this.level().isClientSide);
     }
