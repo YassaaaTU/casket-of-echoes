@@ -124,12 +124,26 @@ public final class EpicFightCompat {
         return lines;
     }
 
+    /**
+     * Epic Fight's weight attribute for an item worn/held in {@code slot} (Equip Load), or {@code 0}.
+     */
+    public static double getWeight(ItemStack stack, EquipmentSlot slot) {
+        if (!isLoaded() || stack.isEmpty()) {
+            return 0.0D;
+        }
+        return getEpicFightAttributeValue(stack, ATTR_WEIGHT, slot);
+    }
+
     private static double getEpicFightAttributeValue(ItemStack stack, ResourceLocation attrId) {
+        return getEpicFightAttributeValue(stack, attrId, EquipmentSlot.MAINHAND);
+    }
+
+    private static double getEpicFightAttributeValue(ItemStack stack, ResourceLocation attrId, EquipmentSlot slot) {
         Attribute attr = ForgeRegistries.ATTRIBUTES.getValue(attrId);
         if (attr == null) {
             return 0.0D;
         }
-        Multimap<Attribute, AttributeModifier> modifiers = stack.getAttributeModifiers(EquipmentSlot.MAINHAND);
+        Multimap<Attribute, AttributeModifier> modifiers = stack.getAttributeModifiers(slot);
         Collection<AttributeModifier> attrMods = modifiers.get(attr);
         if (attrMods == null || attrMods.isEmpty()) {
             return 0.0D;
