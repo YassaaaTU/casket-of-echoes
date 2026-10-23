@@ -34,14 +34,18 @@ import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.living.LivingAttackEvent;
 import net.minecraftforge.event.entity.living.LivingChangeTargetEvent;
+import net.minecraftforge.event.entity.living.LivingDamageEvent;
 import net.minecraftforge.event.entity.living.LivingEquipmentChangeEvent;
 import net.minecraftforge.event.entity.living.LivingHurtEvent;
 import net.minecraftforge.event.entity.player.AdvancementEvent;
+import net.minecraftforge.event.entity.player.AttackEntityEvent;
 import net.minecraftforge.event.entity.player.EntityItemPickupEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.entity.player.PlayerWakeUpEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
+
+import javax.annotation.Nullable;
 
 /**
  * Server/gameplay event listeners: Rest Point access, Rest &amp; Replenish, world pickup overflow, the combat lock,
@@ -59,7 +63,11 @@ public final class ForgeServerEvents {
         MinecraftForge.EVENT_BUS.addListener(ForgeServerEvents::onPlayerWakeUp);
         MinecraftForge.EVENT_BUS.addListener(ForgeServerEvents::onPlayerLoggedIn);
         MinecraftForge.EVENT_BUS.addListener(ForgeServerEvents::onPlayerLoggedOut);
-        MinecraftForge.EVENT_BUS.addListener(EventPriority.HIGH, ForgeServerEvents::onLivingAttack);
+        // Friendly fire runs first so Epic Fight (default priority) never stuns, guards or hit-stops on an ally
+        MinecraftForge.EVENT_BUS.addListener(EventPriority.HIGHEST, ForgeServerEvents::onPlayerAttackEntity);
+        MinecraftForge.EVENT_BUS.addListener(EventPriority.HIGHEST, ForgeServerEvents::onLivingAttack);
+        MinecraftForge.EVENT_BUS.addListener(EventPriority.HIGHEST, ForgeServerEvents::onLivingHurtFriendlyFire);
+        MinecraftForge.EVENT_BUS.addListener(EventPriority.HIGHEST, ForgeServerEvents::onLivingDamageFriendlyFire);
         MinecraftForge.EVENT_BUS.addListener(ForgeServerEvents::onLivingHurt);
         MinecraftForge.EVENT_BUS.addListener(ForgeServerEvents::onChangeTarget);
         MinecraftForge.EVENT_BUS.addListener(ForgeServerEvents::onAdvancementEarned);
@@ -178,16 +186,47 @@ public final class ForgeServerEvents {
     }
 
     /**
-     * Party friendly fire: cancels damage between party members, their pets, mounts and projectiles.
+     * Friendly fire, melee: vanilla clicks and Epic Fight battle-mode hitboxes both end in {@code Player#attack}, so
+     * cancelling here stops the whole swing on an ally (no knockback, sweep, durability loss or Epic Fight hit
+     * effects; Epic Fight reports it as a miss).
      */
-    private static void onLivingAttack(final LivingAttackEvent event) {
-        LivingEntity victim = event.getEntity();
-        if (victim.level().isClientSide || victim.getServer() == null) {
+    private static void onPlayerAttackEntity(final AttackEntityEvent event) {
+        Player attacker = event.getEntity();
+        if (attacker.level().isClientSide || attacker.getServer() == null) {
             return;
         }
-        if (PartyService.shouldPreventHarm(victim.getServer(), victim, event.getSource().getEntity())) {
+        if (PartyService.shouldPreventHarm(attacker.getServer(), event.getTarget(), attacker)) {
             event.setCanceled(true);
         }
+    }
+
+    /**
+     * Friendly fire, everything else: projectiles, pets, spells and Epic Fight skills that hurt targets directly.
+     */
+    private static void onLivingAttack(final LivingAttackEvent event) {
+        if (isFriendlyFire(event.getEntity(), event.getSource().getEntity())) {
+            event.setCanceled(true);
+        }
+    }
+
+    /**
+     * Fallbacks for mods that skip {@link LivingAttackEvent} and call {@code actuallyHurt} directly.
+     */
+    private static void onLivingHurtFriendlyFire(final LivingHurtEvent event) {
+        if (isFriendlyFire(event.getEntity(), event.getSource().getEntity())) {
+            event.setCanceled(true);
+        }
+    }
+
+    private static void onLivingDamageFriendlyFire(final LivingDamageEvent event) {
+        if (isFriendlyFire(event.getEntity(), event.getSource().getEntity())) {
+            event.setCanceled(true);
+        }
+    }
+
+    private static boolean isFriendlyFire(LivingEntity victim, @Nullable Entity attacker) {
+        return attacker != null && !victim.level().isClientSide && victim.getServer() != null
+                && PartyService.shouldPreventHarm(victim.getServer(), victim, attacker);
     }
 
     /**

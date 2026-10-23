@@ -17,7 +17,7 @@ Everything a pack can change without code. Server settings live in `<world>/serv
 | `remoteAccess` | `NONE` / `XP_LEVELS` / `XP_POINTS` / `ITEM` cost, paid once per Casket session |
 | `upgrades` | Reliquary Shard capacity / kinds per shard, max shards per Casket |
 | `equipLoad` | meter on/off, base capacity, optional overload slowdown |
-| `party` | provider (`AUTO`, `BUILTIN`, `FTB_TEAMS`, `OPAC`, `VANILLA_TEAMS`, `NONE`), built-in parties, max members, and `LEADER_CHOICE` / `ALWAYS` / `NEVER` rules for shared Casket, friendly fire, advancement and quest sharing; whether merge / override are allowed; `returnContributionsOnLeave`; `upgradeCreditMinutes` |
+| `party` | provider (`AUTO`, `BUILTIN`, `FTB_TEAMS`, `OPAC`, `VANILLA_TEAMS`, `NONE`), built-in parties, max members, and `LEADER_CHOICE` / `ALWAYS` / `NEVER` rules for shared Casket, friendly fire, advancement and quest sharing; `protectOwnPets` (owners can't hurt their own pets unless sneaking, also under Epic Fight battle mode); whether merge / override are allowed; `returnContributionsOnLeave`; `upgradeCreditMinutes` |
 
 ## Tags
 

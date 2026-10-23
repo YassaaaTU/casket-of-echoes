@@ -266,6 +266,7 @@
   "config.soulsvault.party.maxMembers": "Max Party Members",
   "config.soulsvault.party.sharedCasket": "Shared Casket Rule",
   "config.soulsvault.party.preventFriendlyFire": "Friendly Fire Rule",
+  "config.soulsvault.party.protectOwnPets": "Protect Own Pets",
   "config.soulsvault.party.shareAdvancements": "Advancement Sharing Rule",
   "config.soulsvault.party.shareQuests": "Quest Sharing Rule",
   "config.soulsvault.party.allowCasketMerge": "Allow Casket Merge",

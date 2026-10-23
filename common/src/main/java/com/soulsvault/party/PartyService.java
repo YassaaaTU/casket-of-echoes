@@ -553,13 +553,23 @@ public final class PartyService {
 
     /**
      * Whether damage from {@code attacker} to {@code victim} should be cancelled because both belong to the same
-     * party (players, their tamed pets, their mounts such as Book of Dragons dragons, and their projectiles).
+     * party (players, their tamed pets, their mounts such as Book of Dragons dragons, and their projectiles), or
+     * because an owner is hitting their own pet ({@code party.protectOwnPets}, no party needed; sneak to do it on
+     * purpose). Epic Fight battle-mode swings hit by server-side hitboxes, so client-side "swing through pets"
+     * features never see them: this check is what keeps them off allies.
      */
     public static boolean shouldPreventHarm(MinecraftServer server, Entity victim, @Nullable Entity attacker) {
         UUID victimOwner = resolveVictim(victim);
         UUID attackerOwner = resolveResponsible(attacker, 0);
-        if (victimOwner == null || attackerOwner == null || victimOwner.equals(attackerOwner)) {
+        if (victimOwner == null || attackerOwner == null) {
             return false;
+        }
+        if (victimOwner.equals(attackerOwner)) {
+            if (victim instanceof Player || !SoulsVaultConfig.party().protectOwnPets()) {
+                return false;
+            }
+            ServerPlayer owner = server.getPlayerList().getPlayer(attackerOwner);
+            return owner == null || !owner.isShiftKeyDown();
         }
         PartyView party = getParty(server, attackerOwner);
         if (party == null || !party.members().contains(victimOwner)) {

@@ -115,6 +115,7 @@ public final class SoulsVaultConfig {
             int maxMembers,
             PartyRule sharedCasket,
             PartyRule preventFriendlyFire,
+            boolean protectOwnPets,
             PartyRule shareAdvancements,
             PartyRule shareQuests,
             boolean allowCasketMerge,
@@ -128,6 +129,7 @@ public final class SoulsVaultConfig {
                 4,
                 PartyRule.LEADER_CHOICE,
                 PartyRule.LEADER_CHOICE,
+                true,
                 PartyRule.LEADER_CHOICE,
                 PartyRule.LEADER_CHOICE,
                 true,
@@ -205,6 +207,7 @@ public final class SoulsVaultConfig {
             buf.writeVarInt(this.party.maxMembers());
             buf.writeEnum(this.party.sharedCasket());
             buf.writeEnum(this.party.preventFriendlyFire());
+            buf.writeBoolean(this.party.protectOwnPets());
             buf.writeEnum(this.party.shareAdvancements());
             buf.writeEnum(this.party.shareQuests());
             buf.writeBoolean(this.party.allowCasketMerge());
@@ -229,6 +232,7 @@ public final class SoulsVaultConfig {
                     buf.readVarInt(),
                     buf.readEnum(PartyRule.class),
                     buf.readEnum(PartyRule.class),
+                    buf.readBoolean(),
                     buf.readEnum(PartyRule.class),
                     buf.readEnum(PartyRule.class),
                     buf.readBoolean(),

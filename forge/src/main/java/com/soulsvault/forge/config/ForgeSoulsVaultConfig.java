@@ -77,6 +77,7 @@ public final class ForgeSoulsVaultConfig {
     private static final ForgeConfigSpec.IntValue PARTY_MAX_MEMBERS;
     private static final ForgeConfigSpec.EnumValue<PartyRule> PARTY_SHARED_CASKET;
     private static final ForgeConfigSpec.EnumValue<PartyRule> PARTY_FRIENDLY_FIRE;
+    private static final ForgeConfigSpec.BooleanValue PARTY_PROTECT_OWN_PETS;
     private static final ForgeConfigSpec.EnumValue<PartyRule> PARTY_SHARE_ADVANCEMENTS;
     private static final ForgeConfigSpec.EnumValue<PartyRule> PARTY_SHARE_QUESTS;
     private static final ForgeConfigSpec.BooleanValue PARTY_ALLOW_MERGE;
@@ -240,6 +241,11 @@ public final class ForgeSoulsVaultConfig {
         PARTY_FRIENDLY_FIRE = b.comment("Prevent party members, their pets, mounts (e.g. Book of Dragons) and projectiles hurting each other.")
                 .translation(key("party.preventFriendlyFire"))
                 .defineEnum("preventFriendlyFire", SoulsVaultConfig.Party.DEFAULT.preventFriendlyFire());
+        PARTY_PROTECT_OWN_PETS = b.comment("Owners can't hurt their own tamed pets and mounts unless sneaking, party or not: covers",
+                        "Epic Fight battle-mode swings, sweeps, stray arrows and spells (Domestication Innovation's",
+                        "swing-through only covers vanilla-mode clicks).")
+                .translation(key("party.protectOwnPets"))
+                .define("protectOwnPets", SoulsVaultConfig.Party.DEFAULT.protectOwnPets());
         PARTY_SHARE_ADVANCEMENTS = b.comment("Grant advancements earned by one online member to the other online members.")
                 .translation(key("party.shareAdvancements"))
                 .defineEnum("shareAdvancements", SoulsVaultConfig.Party.DEFAULT.shareAdvancements());
@@ -361,7 +367,7 @@ public final class ForgeSoulsVaultConfig {
                 new SoulsVaultConfig.EquipLoad(EQUIP_LOAD_ENABLED.get(), EQUIP_LOAD_BASE.get(), EQUIP_LOAD_SLOWDOWN.get(),
                         EQUIP_LOAD_PENALTY.get()),
                 new SoulsVaultConfig.Party(PARTY_PROVIDER.get(), BUILTIN_PARTIES.get(), PARTY_MAX_MEMBERS.get(),
-                        PARTY_SHARED_CASKET.get(), PARTY_FRIENDLY_FIRE.get(), PARTY_SHARE_ADVANCEMENTS.get(),
+                        PARTY_SHARED_CASKET.get(), PARTY_FRIENDLY_FIRE.get(), PARTY_PROTECT_OWN_PETS.get(), PARTY_SHARE_ADVANCEMENTS.get(),
                         PARTY_SHARE_QUESTS.get(), PARTY_ALLOW_MERGE.get(), PARTY_ALLOW_OVERRIDE.get(),
                         PARTY_RETURN_ON_LEAVE.get(), PARTY_UPGRADE_CREDIT_MINUTES.get())
         );
