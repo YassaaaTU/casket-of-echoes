@@ -3,8 +3,11 @@ package com.soulsvault.core;
 import com.google.common.collect.Multimap;
 import com.soulsvault.Constants;
 import com.soulsvault.platform.Services;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.ItemTags;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
@@ -35,6 +38,7 @@ import net.minecraft.world.item.WrittenBookItem;
 import net.minecraft.world.item.WritableBookItem;
 
 import java.util.Collection;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -54,9 +58,19 @@ public enum VaultCategory {
     private static final Map<ItemKey, VaultCategory> CLASSIFICATION_CACHE = new ConcurrentHashMap<>();
 
     private final String translationKey;
+    /** {@code #soulsvault:category/<name>}: packs force items into this tab, overriding auto-classification. */
+    private final TagKey<Item> overrideTag;
 
     VaultCategory(String translationKey) {
         this.translationKey = translationKey;
+        this.overrideTag = TagKey.create(
+                Registries.ITEM,
+                new ResourceLocation(Constants.MOD_ID, "category/" + name().toLowerCase(Locale.ROOT))
+        );
+    }
+
+    public TagKey<Item> getOverrideTag() {
+        return this.overrideTag;
     }
 
     public String getTranslationKey() {
@@ -102,6 +116,11 @@ public enum VaultCategory {
         Item item = key.getItem();
 
         // Explicit modpack override tags take top precedence if applied
+        for (VaultCategory category : values()) {
+            if (category != ALL && stack.is(category.overrideTag)) {
+                return category;
+            }
+        }
         if (stack.is(Constants.KEY_ITEMS_TAG)) {
             return KEY_LORE;
         }

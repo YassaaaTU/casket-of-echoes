@@ -2,6 +2,7 @@ package com.soulsvault.core;
 
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtIo;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
@@ -9,6 +10,9 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
 import javax.annotation.Nullable;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -29,6 +33,7 @@ public final class ItemKey {
     @Nullable
     private final CompoundTag tag;
     private final int cachedHash;
+    private volatile int nbtSizeBytes = -1;
 
     public ItemKey(Item item, @Nullable CompoundTag tag) {
         this.item = Objects.requireNonNull(item, "item cannot be null");
@@ -66,6 +71,29 @@ public final class ItemKey {
 
     public boolean hasTag() {
         return this.tag != null;
+    }
+
+    /**
+     * Serialized size of this key's NBT in bytes (0 without NBT), computed once and cached. Used to refuse
+     * book-ban sized items before they reach the Vault file or sync packets.
+     */
+    public int getNbtSizeBytes() {
+        int cached = this.nbtSizeBytes;
+        if (cached >= 0) {
+            return cached;
+        }
+        int size = 0;
+        if (this.tag != null) {
+            CountingOutputStream counter = new CountingOutputStream();
+            try (DataOutputStream out = new DataOutputStream(counter)) {
+                NbtIo.write(this.tag, out);
+            } catch (IOException e) {
+                size = Integer.MAX_VALUE;
+            }
+            size = size == Integer.MAX_VALUE ? size : (int) Math.min(Integer.MAX_VALUE, counter.count);
+        }
+        this.nbtSizeBytes = size;
+        return size;
     }
 
     /**
@@ -180,5 +208,19 @@ public final class ItemKey {
     @Override
     public String toString() {
         return "ItemKey{" + getRegistryId() + (this.tag != null ? ", hasTag=true" : "") + "}";
+    }
+
+    private static final class CountingOutputStream extends OutputStream {
+        private long count;
+
+        @Override
+        public void write(int b) {
+            this.count++;
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) {
+            this.count += len;
+        }
     }
 }
