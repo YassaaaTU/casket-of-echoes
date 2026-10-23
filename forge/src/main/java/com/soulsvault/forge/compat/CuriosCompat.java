@@ -1,8 +1,10 @@
 package com.soulsvault.forge.compat;
 
 import com.soulsvault.Constants;
+import com.soulsvault.core.AccessorySlotAccess;
 import com.soulsvault.core.ItemKey;
 import com.soulsvault.core.PlayerVaultData;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
@@ -17,13 +19,15 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
 /**
- * Soft-dependency integration adapter for Curios API ({@code curios}).
- * Handles Curios item detection and atomic Curios slot capture/swapping for Build Echoes.
+ * Soft-dependency integration adapter for Curios API ({@code curios}) and mods built on Curios
+ * (such as The Aether's Pendant/Necklace, Gloves/Hands, Rings, Cape, Shield of Repulsion, and Accessories).
+ * Handles Curios item detection, live interactive slot bindings, cosmetic Curios slots, and atomic BuildEcho swaps.
  */
 public final class CuriosCompat {
     public static final String MOD_ID = "curios";
@@ -34,6 +38,9 @@ public final class CuriosCompat {
     private static Method getCuriosInventoryMethod;
     private static Method getCuriosMapMethod;
     private static Method getStacksMethod;
+    private static Method getCosmeticStacksMethod;
+    private static Method hasCosmeticMethod;
+    private static Method isVisibleMethod;
 
     private CuriosCompat() {
     }
@@ -63,6 +70,12 @@ public final class CuriosCompat {
 
             Class<?> stacksHandlerInterface = Class.forName("top.theillusivec4.curios.api.type.inventory.ICurioStacksHandler");
             getStacksMethod = stacksHandlerInterface.getMethod("getStacks");
+            try {
+                getCosmeticStacksMethod = stacksHandlerInterface.getMethod("getCosmeticStacks");
+                hasCosmeticMethod = stacksHandlerInterface.getMethod("hasCosmetic");
+                isVisibleMethod = stacksHandlerInterface.getMethod("isVisible");
+            } catch (Throwable ignored) {
+            }
         } catch (Throwable t) {
             Constants.LOG.debug("Curios API reflection hook initialization skipped: {}", t.getMessage());
         }
@@ -72,7 +85,10 @@ public final class CuriosCompat {
         if (stack == null || stack.isEmpty()) {
             return false;
         }
-        if (stack.getTags().anyMatch(tagKey -> MOD_ID.equals(tagKey.location().getNamespace()))) {
+        if (stack.getTags().anyMatch(tagKey -> {
+            String ns = tagKey.location().getNamespace();
+            return MOD_ID.equals(ns) || "aether".equals(ns) && tagKey.location().getPath().contains("accessories");
+        })) {
             return true;
         }
         if (!isLoaded()) {
@@ -92,6 +108,107 @@ public final class CuriosCompat {
             }
         }
         return false;
+    }
+
+    public static boolean canEquipInCurioSlot(String slotId, ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return false;
+        }
+        String normalized = slotId.toLowerCase(Locale.ROOT);
+        boolean tagMatched = stack.getTags().anyMatch(tagKey -> {
+            String ns = tagKey.location().getNamespace();
+            String path = tagKey.location().getPath().toLowerCase(Locale.ROOT);
+            if (MOD_ID.equals(ns) && (path.equals(normalized) || path.equals("curio"))) {
+                return true;
+            }
+            return "aether".equals(ns) && (path.equals(normalized) || path.contains(normalized.replace("aether_", "")));
+        });
+        if (tagMatched) {
+            return true;
+        }
+        if (!isLoaded()) {
+            return false;
+        }
+        initReflection();
+        if (getCuriosHelperMethod != null && getCurioTagsMethod != null) {
+            try {
+                Object helper = getCuriosHelperMethod.invoke(null);
+                if (helper != null) {
+                    Object tagsObj = getCurioTagsMethod.invoke(helper, stack.getItem());
+                    if (tagsObj instanceof Set<?> tags) {
+                        for (Object tag : tags) {
+                            String tagStr = String.valueOf(tag).toLowerCase(Locale.ROOT);
+                            if (tagStr.equals(normalized) || tagStr.equals("curio")) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Collects all live interactive Curios & Aether accessory slots (plus cosmetic Curio slots if requested)
+     * for the given player.
+     */
+    public static List<AccessorySlotAccess> getAccessorySlots(Player player, boolean includeCosmetics) {
+        if (player == null || !isLoaded()) {
+            return Collections.emptyList();
+        }
+        initReflection();
+        if (getCuriosInventoryMethod == null || getCuriosMapMethod == null || getStacksMethod == null) {
+            return Collections.emptyList();
+        }
+
+        List<AccessorySlotAccess> result = new ArrayList<>();
+        try {
+            Object lazyOptObj = getCuriosInventoryMethod.invoke(null, player);
+            if (lazyOptObj instanceof LazyOptional<?> lazyOpt) {
+                Optional<?> resolved = lazyOpt.resolve();
+                if (resolved.isPresent()) {
+                    Object curiosHandler = resolved.get();
+                    Object mapObj = getCuriosMapMethod.invoke(curiosHandler);
+                    if (mapObj instanceof Map<?, ?> rawMap) {
+                        for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+                            String slotId = String.valueOf(entry.getKey());
+                            Object stacksHandler = entry.getValue();
+                            if (isVisibleMethod != null) {
+                                Object vis = isVisibleMethod.invoke(stacksHandler);
+                                if (vis instanceof Boolean b && !b) {
+                                    continue;
+                                }
+                            }
+
+                            if (includeCosmetics && hasCosmeticMethod != null && getCosmeticStacksMethod != null) {
+                                Object hasCos = hasCosmeticMethod.invoke(stacksHandler);
+                                if (hasCos instanceof Boolean b && b) {
+                                    Object cosStacksObj = getCosmeticStacksMethod.invoke(stacksHandler);
+                                    if (cosStacksObj instanceof IItemHandlerModifiable cosHandler) {
+                                        for (int i = 0; i < cosHandler.getSlots(); i++) {
+                                            result.add(new CurioSlotAccess(slotId, i, cosHandler, true));
+                                        }
+                                        continue;
+                                    }
+                                }
+                            }
+
+                            Object stacksObj = getStacksMethod.invoke(stacksHandler);
+                            if (stacksObj instanceof IItemHandlerModifiable itemHandler) {
+                                for (int i = 0; i < itemHandler.getSlots(); i++) {
+                                    result.add(new CurioSlotAccess(slotId, i, itemHandler, false));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            Constants.LOG.debug("Failed to query Curios slots for {}: {}", player.getScoreboardName(), t.getMessage());
+        }
+        return result;
     }
 
     @SuppressWarnings("unchecked")
@@ -208,6 +325,80 @@ public final class CuriosCompat {
             }
         } catch (Throwable t) {
             Constants.LOG.debug("Failed to swap Curios inventory for {}: {}", player.getScoreboardName(), t.getMessage());
+        }
+    }
+
+    private static final class CurioSlotAccess implements AccessorySlotAccess {
+        private final String slotId;
+        private final int slotIndex;
+        private final IItemHandlerModifiable handler;
+        private final boolean cosmetic;
+
+        CurioSlotAccess(String slotId, int slotIndex, IItemHandlerModifiable handler, boolean cosmetic) {
+            this.slotId = slotId;
+            this.slotIndex = slotIndex;
+            this.handler = handler;
+            this.cosmetic = cosmetic;
+        }
+
+        @Override
+        public String getSlotTypeId() {
+            return this.slotId;
+        }
+
+        @Override
+        public int getSlotIndex() {
+            return this.slotIndex;
+        }
+
+        @Override
+        public Component getDisplayName() {
+            String pretty = formatSlotName(this.slotId);
+            if (this.cosmetic) {
+                return Component.literal("Cosmetic " + pretty + " #" + (this.slotIndex + 1));
+            }
+            return Component.literal(pretty + (this.handler.getSlots() > 1 ? " #" + (this.slotIndex + 1) : ""));
+        }
+
+        @Override
+        public boolean isCosmetic() {
+            return this.cosmetic;
+        }
+
+        @Override
+        public ItemStack getStack() {
+            if (this.slotIndex >= 0 && this.slotIndex < this.handler.getSlots()) {
+                return this.handler.getStackInSlot(this.slotIndex);
+            }
+            return ItemStack.EMPTY;
+        }
+
+        @Override
+        public void setStack(ItemStack stack) {
+            if (this.slotIndex >= 0 && this.slotIndex < this.handler.getSlots()) {
+                this.handler.setStackInSlot(this.slotIndex, stack == null ? ItemStack.EMPTY : stack);
+            }
+        }
+
+        @Override
+        public boolean mayPlace(ItemStack stack) {
+            if (stack == null || stack.isEmpty()) {
+                return false;
+            }
+            if (canEquipInCurioSlot(this.slotId, stack)) {
+                return true;
+            }
+            return this.slotIndex >= 0
+                    && this.slotIndex < this.handler.getSlots()
+                    && this.handler.isItemValid(this.slotIndex, stack);
+        }
+
+        private static String formatSlotName(String id) {
+            String clean = id.replace("aether_", "Aether ").replace('_', ' ').trim();
+            if (clean.isEmpty()) {
+                return "Accessory";
+            }
+            return Character.toUpperCase(clean.charAt(0)) + clean.substring(1);
         }
     }
 }

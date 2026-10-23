@@ -3,14 +3,17 @@ package com.soulsvault.forge.registry;
 import com.soulsvault.Constants;
 import com.soulsvault.world.block.BottomlessCasketBlock;
 import com.soulsvault.world.entity.SpectralCasketEntity;
+import com.soulsvault.world.inventory.SoulsVaultMenu;
 import com.soulsvault.world.item.VestigeMothItem;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Rarity;
 import net.minecraft.world.level.block.Block;
+import net.minecraftforge.common.extensions.IForgeMenuType;
 import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.registries.DeferredRegister;
@@ -24,6 +27,13 @@ public final class ForgeModBlocks {
             DeferredRegister.create(ForgeRegistries.ITEMS, Constants.MOD_ID);
     public static final DeferredRegister<EntityType<?>> ENTITY_TYPES =
             DeferredRegister.create(ForgeRegistries.ENTITY_TYPES, Constants.MOD_ID);
+    public static final DeferredRegister<MenuType<?>> MENU_TYPES =
+            DeferredRegister.create(ForgeRegistries.MENU_TYPES, Constants.MOD_ID);
+
+    public static final RegistryObject<MenuType<SoulsVaultMenu>> VAULT_MENU = MENU_TYPES.register(
+            "souls_vault",
+            () -> IForgeMenuType.create(SoulsVaultMenu::new)
+    );
 
     public static final RegistryObject<BottomlessCasketBlock> BOTTOMLESS_CASKET = BLOCKS.register(
             "bottomless_casket",
@@ -60,6 +70,7 @@ public final class ForgeModBlocks {
         BLOCKS.register(modEventBus);
         ITEMS.register(modEventBus);
         ENTITY_TYPES.register(modEventBus);
+        MENU_TYPES.register(modEventBus);
         modEventBus.addListener(ForgeModBlocks::addCreativeTabItems);
     }
 

@@ -44,6 +44,7 @@ public final class CategoryTabButton extends AbstractWidget {
 
     private static ItemStack createIconForCategory(VaultCategory category) {
         return switch (category) {
+            case ALL -> new ItemStack(Items.ENDER_CHEST);
             case WEAPONS -> new ItemStack(Items.NETHERITE_SWORD);
             case RANGED_AMMO -> new ItemStack(Items.BOW);
             case ARMOR -> new ItemStack(Items.NETHERITE_CHESTPLATE);

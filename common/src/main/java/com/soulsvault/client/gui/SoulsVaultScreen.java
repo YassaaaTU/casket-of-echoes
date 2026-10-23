@@ -7,6 +7,7 @@ import com.soulsvault.client.gui.widget.CategoryTabButton;
 import com.soulsvault.client.gui.widget.GothicButton;
 import com.soulsvault.client.gui.widget.ItemInspectionPane;
 import com.soulsvault.client.gui.widget.VaultItemSlotWidget;
+import com.soulsvault.config.SoulsVaultConfig;
 import com.soulsvault.core.BuildEcho;
 import com.soulsvault.core.ItemKey;
 import com.soulsvault.core.PlayerVaultData;
@@ -15,11 +16,13 @@ import com.soulsvault.core.VaultEntry;
 import com.soulsvault.core.VaultSortMode;
 import com.soulsvault.network.PacketC2SVaultAction;
 import com.soulsvault.platform.Services;
+import com.soulsvault.world.inventory.SoulsVaultMenu;
+import com.soulsvault.world.inventory.SoulsVaultMenu.LeftPaneMode;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -27,6 +30,7 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 
@@ -38,28 +42,31 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Dual-pane Souls-like Casket of Echoes screen.
+ * Dual-pane Souls-like Inventory & Casket of Echoes container screen.
  * <p>
- * Obeys the dark gothic visual palette:
+ * Extends {@link AbstractContainerScreen} over {@link SoulsVaultMenu} to provide:
  * <ul>
- *   <li>Deep charcoal stone background: {@code #121013}</li>
- *   <li>Weathered bronze borders: {@code #8C7853}</li>
- *   <li>Muted gold selection glow: {@code #D4AF37}</li>
+ *   <li>Native Drag-and-Drop across all 36 Player Inventory/Hotbar slots, Equipment, Curios/Aether accessories,
+ *       Cosmetic Armor, and the built-in 3x3 Crafting Grid</li>
+ *   <li>Out-of-the-box compatibility with Mouse Tweaks, Inventory Essentials, and Controller mods
+ *       (Controllable, Controlify, Control Flex)</li>
+ *   <li>8 Category Tabs starting with {@link VaultCategory#ALL} + full search ({@code @mod}, {@code #tag})</li>
+ *   <li>Vault-to-Cursor pickup and Cursor-to-Vault deposit</li>
  * </ul>
  */
-public class SoulsVaultScreen extends Screen {
+public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
     public static final ResourceLocation VAULT_BG_TEXTURE =
             new ResourceLocation(Constants.MOD_ID, "textures/gui/vault_bg.png");
 
-    private static final int WINDOW_WIDTH = 400;
-    private static final int WINDOW_HEIGHT = 236;
+    public static final int WINDOW_WIDTH = 416;
+    public static final int WINDOW_HEIGHT = 244;
 
-    private static final int LEFT_PANE_OFFSET_X = 8;
-    private static final int LEFT_PANE_WIDTH = 166;
-    private static final int RIGHT_PANE_OFFSET_X = 182;
-    private static final int RIGHT_PANE_WIDTH = 210;
+    private static final int LEFT_PANE_OFFSET_X = SoulsVaultMenu.LEFT_PANE_OFFSET_X;
+    private static final int LEFT_PANE_WIDTH = 176;
+    private static final int RIGHT_PANE_OFFSET_X = 190;
+    private static final int RIGHT_PANE_WIDTH = 218;
 
-    private static final int SEARCH_BOX_WIDTH = 114;
+    private static final int SEARCH_BOX_WIDTH = 120;
     private static final int SEARCH_BOX_HEIGHT = 16;
 
     private static final int COLOR_CHARCOAL_BG = 0xF4121013;
@@ -72,53 +79,35 @@ public class SoulsVaultScreen extends Screen {
 
     private static final int VAULT_COLS = 7;
     private static final int VAULT_ROWS = 6;
-    private static final int INV_COLS = 6;
-    private static final int INV_ROWS = 4;
-    private static final int INV_SLOT_STEP = 25;
     private static final int VAULT_SLOT_STEP = 26;
 
-    private static final EquipmentSlot[] EQUIP_SLOTS = {
-            EquipmentSlot.MAINHAND,
-            EquipmentSlot.OFFHAND,
-            EquipmentSlot.HEAD,
-            EquipmentSlot.CHEST,
-            EquipmentSlot.LEGS,
-            EquipmentSlot.FEET
-    };
-
-    private static final ResourceLocation[] EQUIP_SLOT_ICONS = {
-            new ResourceLocation(Constants.MOD_ID, "textures/gui/slots/slot_mainhand.png"),
-            new ResourceLocation(Constants.MOD_ID, "textures/gui/slots/slot_offhand.png"),
-            new ResourceLocation(Constants.MOD_ID, "textures/gui/slots/slot_head.png"),
-            new ResourceLocation(Constants.MOD_ID, "textures/gui/slots/slot_chest.png"),
-            new ResourceLocation(Constants.MOD_ID, "textures/gui/slots/slot_legs.png"),
-            new ResourceLocation(Constants.MOD_ID, "textures/gui/slots/slot_feet.png")
-    };
-
-    private int leftPos;
-    private int topPos;
-
-    private VaultCategory selectedCategory = VaultCategory.WEAPONS;
+    private VaultCategory selectedCategory = VaultCategory.ALL;
     private VaultSortMode sortMode = VaultSortMode.RECENTLY_ACQUIRED;
     private boolean inspectionMode = false;
-    private boolean echoesDrawerOpen = false;
-    private boolean filterInventoryByCategory = true;
 
     private final List<CategoryTabButton> categoryTabButtons = new ArrayList<>();
     private final List<VaultItemSlotWidget> vaultSlotWidgets = new ArrayList<>();
-    private final List<VaultItemSlotWidget> equipmentSlotWidgets = new ArrayList<>();
-    private final List<VaultItemSlotWidget> playerInvSlotWidgets = new ArrayList<>();
-    private final List<Integer> filteredPlayerInvSlots = new ArrayList<>();
 
     private List<VaultEntry> filteredVaultEntries = new ArrayList<>();
     private int vaultScrollRow = 0;
-    private int invScrollRow = 0;
+    private int buildEchoScroll = 0;
 
     private EditBox searchBox;
     private GothicButton sortButton;
     private GothicButton inspectToggleButton;
-    private GothicButton echoesToggleButton;
-    private GothicButton invFilterButton;
+    private GothicButton invModeConfigButton;
+    @Nullable
+    private GothicButton waystonesButton;
+
+    private GothicButton tabGearCuriosButton;
+    private GothicButton tabCraftingButton;
+    private GothicButton tabEchoesButton;
+
+    private GothicButton cosmeticToggleButton;
+    private GothicButton prevAccessoryPageButton;
+    private GothicButton nextAccessoryPageButton;
+    private GothicButton clearCraftingGridButton;
+
     private ItemInspectionPane inspectionPane;
 
     private ItemKey selectedItemKey = ItemKey.EMPTY;
@@ -127,8 +116,10 @@ public class SoulsVaultScreen extends Screen {
 
     private final Runnable syncListener = this::refreshAllSlots;
 
-    public SoulsVaultScreen() {
-        super(Component.translatable("gui.soulsvault.title"));
+    public SoulsVaultScreen(SoulsVaultMenu menu, Inventory playerInventory, Component title) {
+        super(menu, playerInventory, title);
+        this.imageWidth = WINDOW_WIDTH;
+        this.imageHeight = WINDOW_HEIGHT;
     }
 
     @Override
@@ -140,10 +131,10 @@ public class SoulsVaultScreen extends Screen {
         int leftPaneX = this.leftPos + LEFT_PANE_OFFSET_X;
         int rightPaneX = this.leftPos + RIGHT_PANE_OFFSET_X;
 
-        // 7 Category Tabs aligned directly above the 166px Left Pane (7 * 22 + 6 * 2 = 166px)
+        // 1. 8 Category Tabs (ALL + 7 specialized categories) aligned above the 176px Left Pane
         this.categoryTabButtons.clear();
         VaultCategory[] categories = VaultCategory.values();
-        int tabWidth = 22;
+        int tabWidth = 20;
         int tabHeight = 20;
         int tabGap = 2;
         int tabY = this.topPos + 20;
@@ -163,7 +154,7 @@ public class SoulsVaultScreen extends Screen {
             addRenderableWidget(tabBtn);
         }
 
-        // Borderless inner EditBox inside our custom gothic search bar frame
+        // 2. Search Box & Sort Selector above Right Pane
         this.searchBox = new EditBox(
                 this.font,
                 rightPaneX + 5,
@@ -181,7 +172,6 @@ public class SoulsVaultScreen extends Screen {
         });
         addRenderableWidget(this.searchBox);
 
-        // Sort Selector Button (GothicButton)
         this.sortButton = new GothicButton(
                 rightPaneX + SEARCH_BOX_WIDTH + 4,
                 this.topPos + 22,
@@ -196,23 +186,38 @@ public class SoulsVaultScreen extends Screen {
         );
         addRenderableWidget(this.sortButton);
 
-        // Header Build Echoes Drawer Button ('B' shortcut)
-        this.echoesToggleButton = new GothicButton(
-                this.leftPos + WINDOW_WIDTH - 172,
-                this.topPos + 4,
-                84,
-                14,
-                getEchoesButtonLabel(),
-                btn -> toggleEchoesDrawer()
-        );
-        this.echoesToggleButton.setHighlighted(this.echoesDrawerOpen);
-        addRenderableWidget(this.echoesToggleButton);
+        // 3. Header Right Controls: Waystones Button (if loaded), Full-Inventory Config Toggle, Inspect Mode Toggle
+        if (Services.PLATFORM.isModLoaded("waystones")) {
+            this.waystonesButton = new GothicButton(
+                    this.leftPos + WINDOW_WIDTH - 208,
+                    this.topPos + 4,
+                    48,
+                    14,
+                    Component.translatable("gui.soulsvault.action.waystones"),
+                    btn -> Services.PLATFORM.triggerWaystonesButton()
+            );
+            addRenderableWidget(this.waystonesButton);
+        }
 
-        // Header Inspect Mode Button ('R' shortcut)
-        this.inspectToggleButton = new GothicButton(
-                this.leftPos + WINDOW_WIDTH - 84,
+        this.invModeConfigButton = new GothicButton(
+                this.leftPos + WINDOW_WIDTH - 156,
                 this.topPos + 4,
-                76,
+                74,
+                14,
+                getInvModeConfigLabel(),
+                btn -> {
+                    SoulsVaultConfig.setFullInventoryReplacement(!SoulsVaultConfig.isFullInventoryReplacement());
+                    btn.setMessage(getInvModeConfigLabel());
+                    btn.setHighlighted(SoulsVaultConfig.isFullInventoryReplacement());
+                }
+        );
+        this.invModeConfigButton.setHighlighted(SoulsVaultConfig.isFullInventoryReplacement());
+        addRenderableWidget(this.invModeConfigButton);
+
+        this.inspectToggleButton = new GothicButton(
+                this.leftPos + WINDOW_WIDTH - 78,
+                this.topPos + 4,
+                70,
                 14,
                 getInspectButtonLabel(),
                 btn -> toggleInspectionMode()
@@ -220,29 +225,95 @@ public class SoulsVaultScreen extends Screen {
         this.inspectToggleButton.setHighlighted(this.inspectionMode);
         addRenderableWidget(this.inspectToggleButton);
 
-        // Left Pane: Inventory Filter Toggle Button (Category vs All Slots)
-        this.invFilterButton = new GothicButton(
-                leftPaneX + 84,
-                this.topPos + 83,
-                76,
+        // 4. Left-Pane Top Sub-Mode Tabs: [Gear & Curios] | [3x3 Craft] | [Echoes]
+        int subTabY = this.topPos + 44;
+        this.tabGearCuriosButton = new GothicButton(
+                leftPaneX + 4,
+                subTabY,
+                60,
                 13,
-                getInvFilterButtonLabel(),
+                Component.translatable("gui.soulsvault.tab.gear_curios"),
+                btn -> setLeftPaneMode(LeftPaneMode.GEAR_CURIOS)
+        );
+        this.tabCraftingButton = new GothicButton(
+                leftPaneX + 66,
+                subTabY,
+                54,
+                13,
+                Component.translatable("gui.soulsvault.tab.crafting"),
+                btn -> setLeftPaneMode(LeftPaneMode.CRAFTING)
+        );
+        this.tabEchoesButton = new GothicButton(
+                leftPaneX + 122,
+                subTabY,
+                50,
+                13,
+                Component.translatable("gui.soulsvault.tab.echoes"),
+                btn -> setLeftPaneMode(LeftPaneMode.BUILD_ECHOES)
+        );
+        addRenderableWidget(this.tabGearCuriosButton);
+        addRenderableWidget(this.tabCraftingButton);
+        addRenderableWidget(this.tabEchoesButton);
+
+        // 5. Sub-Mode Specific Controls (Cosmetic toggle, Accessory page arrows, Clear Crafting Grid)
+        this.cosmeticToggleButton = new GothicButton(
+                leftPaneX + 109,
+                this.topPos + SoulsVaultMenu.EQUIP_ROW_Y,
+                36,
+                16,
+                Component.translatable("gui.soulsvault.action.cosmetic"),
                 btn -> {
-                    this.filterInventoryByCategory = !this.filterInventoryByCategory;
-                    this.invScrollRow = 0;
-                    btn.setMessage(getInvFilterButtonLabel());
-                    refreshAllSlots();
+                    this.menu.setCosmeticMode(!this.menu.isCosmeticMode());
+                    sendMenuButton(3);
+                    btn.setHighlighted(this.menu.isCosmeticMode());
+                    updateLeftPaneSubControls();
                 }
         );
-        this.invFilterButton.visible = !this.echoesDrawerOpen;
-        addRenderableWidget(this.invFilterButton);
+        addRenderableWidget(this.cosmeticToggleButton);
 
-        // Left Pane Bottom Action Buttons: Rest & Replenish + Quick Deposit Category
-        int bottomBtnY = this.topPos + WINDOW_HEIGHT - 22;
+        this.prevAccessoryPageButton = new GothicButton(
+                leftPaneX + 147,
+                this.topPos + SoulsVaultMenu.EQUIP_ROW_Y,
+                11,
+                16,
+                Component.literal("<"),
+                btn -> {
+                    this.menu.setAccessoryPage(this.menu.getAccessoryPage() - 1);
+                    sendMenuButton(4);
+                    updateLeftPaneSubControls();
+                }
+        );
+        this.nextAccessoryPageButton = new GothicButton(
+                leftPaneX + 159,
+                this.topPos + SoulsVaultMenu.EQUIP_ROW_Y,
+                11,
+                16,
+                Component.literal(">"),
+                btn -> {
+                    this.menu.setAccessoryPage(this.menu.getAccessoryPage() + 1);
+                    sendMenuButton(5);
+                    updateLeftPaneSubControls();
+                }
+        );
+        addRenderableWidget(this.prevAccessoryPageButton);
+        addRenderableWidget(this.nextAccessoryPageButton);
+
+        this.clearCraftingGridButton = new GothicButton(
+                this.leftPos + SoulsVaultMenu.CRAFT_GRID_X + 58,
+                this.topPos + SoulsVaultMenu.CRAFT_GRID_Y,
+                14,
+                14,
+                Component.literal("×"),
+                btn -> Services.PLATFORM.sendToServer(PacketC2SVaultAction.clearCraftingGrid())
+        );
+        addRenderableWidget(this.clearCraftingGridButton);
+
+        // 6. Left Pane Bottom Action Buttons: Rest & Replenish + Quick Deposit Category
+        int bottomBtnY = this.topPos + WINDOW_HEIGHT - 20;
         GothicButton restReplenishBtn = new GothicButton(
                 leftPaneX,
                 bottomBtnY,
-                81,
+                86,
                 15,
                 Component.translatable("gui.soulsvault.action.rest_replenish"),
                 btn -> Services.PLATFORM.sendToServer(PacketC2SVaultAction.restReplenish())
@@ -250,50 +321,29 @@ public class SoulsVaultScreen extends Screen {
         addRenderableWidget(restReplenishBtn);
 
         GothicButton quickDepositBtn = new GothicButton(
-                leftPaneX + 85,
+                leftPaneX + 90,
                 bottomBtnY,
-                81,
+                86,
                 15,
                 Component.translatable("gui.soulsvault.action.quick_deposit"),
                 btn -> Services.PLATFORM.sendToServer(PacketC2SVaultAction.depositAllCategory(this.selectedCategory))
         );
         addRenderableWidget(quickDepositBtn);
 
-        // Build virtualized slot widgets
-        this.equipmentSlotWidgets.clear();
-        int equipY = this.topPos + 54;
-        for (int i = 0; i < EQUIP_SLOTS.length; i++) {
-            VaultItemSlotWidget eqWidget = new VaultItemSlotWidget(
-                    leftPaneX + 9 + i * INV_SLOT_STEP,
-                    equipY,
-                    VaultItemSlotWidget.SLOT_SIZE
-            );
-            eqWidget.setEmptyIcon(EQUIP_SLOT_ICONS[i]);
-            this.equipmentSlotWidgets.add(eqWidget);
-        }
-
-        this.playerInvSlotWidgets.clear();
-        int invGridStartY = this.topPos + 99;
-        for (int row = 0; row < INV_ROWS; row++) {
-            for (int col = 0; col < INV_COLS; col++) {
-                this.playerInvSlotWidgets.add(new VaultItemSlotWidget(
-                        leftPaneX + 9 + col * INV_SLOT_STEP,
-                        invGridStartY + row * INV_SLOT_STEP,
-                        VaultItemSlotWidget.SLOT_SIZE
-                ));
-            }
-        }
-
+        // 7. Right Pane Virtualized Vault Slot Widgets (Registered as AbstractWidgets for Controller Support!)
         this.vaultSlotWidgets.clear();
-        int vaultGridStartX = rightPaneX + 12;
-        int vaultGridStartY = this.topPos + 56;
+        int vaultGridStartX = rightPaneX + 18;
+        int vaultGridStartY = this.topPos + 58;
         for (int row = 0; row < VAULT_ROWS; row++) {
             for (int col = 0; col < VAULT_COLS; col++) {
-                this.vaultSlotWidgets.add(new VaultItemSlotWidget(
+                VaultItemSlotWidget slotWidget = new VaultItemSlotWidget(
                         vaultGridStartX + col * VAULT_SLOT_STEP,
                         vaultGridStartY + row * VAULT_SLOT_STEP,
-                        VaultItemSlotWidget.SLOT_SIZE
-                ));
+                        VaultItemSlotWidget.SLOT_SIZE,
+                        this::onVaultWidgetClicked
+                );
+                this.vaultSlotWidgets.add(slotWidget);
+                addRenderableWidget(slotWidget);
             }
         }
 
@@ -301,17 +351,18 @@ public class SoulsVaultScreen extends Screen {
                 rightPaneX,
                 this.topPos + 42,
                 RIGHT_PANE_WIDTH,
-                WINDOW_HEIGHT - 50
+                WINDOW_HEIGHT - 48
         );
         this.inspectionPane.setInspectedKey(this.selectedItemKey);
 
         ClientVaultCache.registerSyncListener(this.syncListener);
+        updateLeftPaneSubControls();
         refreshAllSlots();
     }
 
     @Override
-    public void tick() {
-        super.tick();
+    public void containerTick() {
+        super.containerTick();
         refreshAllSlots();
     }
 
@@ -327,22 +378,67 @@ public class SoulsVaultScreen extends Screen {
         );
     }
 
-    private Component getEchoesButtonLabel() {
+    private Component getInvModeConfigLabel() {
         return Component.translatable(
-                this.echoesDrawerOpen ? "gui.soulsvault.action.echoes_close" : "gui.soulsvault.action.echoes_open"
+                SoulsVaultConfig.isFullInventoryReplacement()
+                        ? "gui.soulsvault.config.inv_souls"
+                        : "gui.soulsvault.config.inv_vanilla"
         );
     }
 
-    private Component getInvFilterButtonLabel() {
-        return Component.translatable(
-                this.filterInventoryByCategory ? "gui.soulsvault.action.filter_cat" : "gui.soulsvault.action.filter_all"
-        );
+    private void setLeftPaneMode(LeftPaneMode mode) {
+        this.menu.setLeftPaneMode(mode);
+        sendMenuButton(switch (mode) {
+            case GEAR_CURIOS -> 0;
+            case CRAFTING -> 1;
+            case BUILD_ECHOES -> 2;
+        });
+        this.refillPopover = null;
+        updateLeftPaneSubControls();
+    }
+
+    private void sendMenuButton(int buttonId) {
+        if (this.minecraft != null && this.minecraft.gameMode != null) {
+            this.minecraft.gameMode.handleInventoryButtonClick(this.menu.containerId, buttonId);
+        }
+    }
+
+    private void updateLeftPaneSubControls() {
+        LeftPaneMode mode = this.menu.getLeftPaneMode();
+        if (this.tabGearCuriosButton != null) {
+            this.tabGearCuriosButton.setHighlighted(mode == LeftPaneMode.GEAR_CURIOS);
+        }
+        if (this.tabCraftingButton != null) {
+            this.tabCraftingButton.setHighlighted(mode == LeftPaneMode.CRAFTING);
+        }
+        if (this.tabEchoesButton != null) {
+            this.tabEchoesButton.setHighlighted(mode == LeftPaneMode.BUILD_ECHOES);
+        }
+        if (this.cosmeticToggleButton != null) {
+            this.cosmeticToggleButton.visible = (mode == LeftPaneMode.GEAR_CURIOS) && this.menu.hasCosmeticSlots();
+            this.cosmeticToggleButton.setHighlighted(this.menu.isCosmeticMode());
+        }
+        int totalPages = this.menu.getTotalAccessoryPages();
+        if (this.prevAccessoryPageButton != null) {
+            this.prevAccessoryPageButton.visible = (mode == LeftPaneMode.GEAR_CURIOS) && totalPages > 1;
+            this.prevAccessoryPageButton.active = this.menu.getAccessoryPage() > 0;
+        }
+        if (this.nextAccessoryPageButton != null) {
+            this.nextAccessoryPageButton.visible = (mode == LeftPaneMode.GEAR_CURIOS) && totalPages > 1;
+            this.nextAccessoryPageButton.active = this.menu.getAccessoryPage() < totalPages - 1;
+        }
+        if (this.clearCraftingGridButton != null) {
+            this.clearCraftingGridButton.visible = (mode == LeftPaneMode.CRAFTING);
+        }
+        for (VaultItemSlotWidget vaultSlot : this.vaultSlotWidgets) {
+            vaultSlot.visible = !this.inspectionMode;
+            vaultSlot.active = !this.inspectionMode;
+        }
     }
 
     private void selectCategory(VaultCategory category) {
         this.selectedCategory = category;
         this.vaultScrollRow = 0;
-        this.invScrollRow = 0;
         this.refillPopover = null;
         for (CategoryTabButton btn : this.categoryTabButtons) {
             btn.setSelected(btn.getCategory() == category);
@@ -360,32 +456,24 @@ public class SoulsVaultScreen extends Screen {
         if (this.inspectionPane != null) {
             this.inspectionPane.setInspectedKey(this.selectedItemKey);
         }
-    }
-
-    private void toggleEchoesDrawer() {
-        this.echoesDrawerOpen = !this.echoesDrawerOpen;
-        this.refillPopover = null;
-        if (this.echoesToggleButton != null) {
-            this.echoesToggleButton.setMessage(getEchoesButtonLabel());
-            this.echoesToggleButton.setHighlighted(this.echoesDrawerOpen);
-        }
-        if (this.invFilterButton != null) {
-            this.invFilterButton.visible = !this.echoesDrawerOpen;
-        }
-        refreshAllSlots();
+        updateLeftPaneSubControls();
     }
 
     public void refreshAllSlots() {
         Minecraft mc = Minecraft.getInstance();
         PlayerVaultData vaultData = ClientVaultCache.getVaultData();
 
-        // Update category tab badge counts
+        // Update category tab badge counts (including ALL)
         Map<VaultCategory, Integer> countsByCategory = new EnumMap<>(VaultCategory.class);
+        int totalUniqueEntries = 0;
         for (VaultEntry entry : vaultData.getEntries()) {
             if (entry.shouldRetain()) {
+                totalUniqueEntries++;
                 countsByCategory.merge(entry.getCategory(), 1, Integer::sum);
             }
         }
+        countsByCategory.put(VaultCategory.ALL, totalUniqueEntries);
+
         for (CategoryTabButton tabBtn : this.categoryTabButtons) {
             tabBtn.setEntryCount(countsByCategory.getOrDefault(tabBtn.getCategory(), 0));
         }
@@ -395,7 +483,7 @@ public class SoulsVaultScreen extends Screen {
         String query = this.searchBox != null ? this.searchBox.getValue().trim() : "";
         List<VaultEntry> matching = new ArrayList<>();
         for (VaultEntry entry : rawCategoryEntries) {
-            if (matchesSearchQuery(mc, entry, query)) {
+            if (matchesSearchQuery(mc, entry.getKey(), entry.createDisplayStack(), query)) {
                 matching.add(entry);
             }
         }
@@ -412,6 +500,7 @@ public class SoulsVaultScreen extends Screen {
         for (int i = 0; i < this.vaultSlotWidgets.size(); i++) {
             int entryIdx = startVaultIndex + i;
             VaultItemSlotWidget widget = this.vaultSlotWidgets.get(i);
+            widget.visible = !this.inspectionMode;
             if (entryIdx < this.filteredVaultEntries.size()) {
                 VaultEntry entry = this.filteredVaultEntries.get(entryIdx);
                 widget.bindVaultEntry(entry, entry.getKey().equals(this.selectedItemKey));
@@ -426,62 +515,22 @@ public class SoulsVaultScreen extends Screen {
                 this.inspectionPane.setInspectedKey(this.selectedItemKey);
             }
         }
-
-        // Bind player equipment & filtered inventory slots
-        if (mc.player != null) {
-            for (int i = 0; i < EQUIP_SLOTS.length && i < this.equipmentSlotWidgets.size(); i++) {
-                ItemStack equipped = mc.player.getItemBySlot(EQUIP_SLOTS[i]);
-                ItemKey eqKey = ItemKey.fromStack(equipped);
-                this.equipmentSlotWidgets.get(i).bindItemStack(equipped, !eqKey.isEmpty() && eqKey.equals(this.selectedItemKey));
-            }
-
-            Inventory inv = mc.player.getInventory();
-            this.filteredPlayerInvSlots.clear();
-            for (int slotIdx = 0; slotIdx < inv.items.size(); slotIdx++) {
-                ItemStack stack = inv.items.get(slotIdx);
-                if (stack.isEmpty()) {
-                    continue;
-                }
-                if (!this.filterInventoryByCategory || VaultCategory.classify(stack) == this.selectedCategory) {
-                    this.filteredPlayerInvSlots.add(slotIdx);
-                }
-            }
-
-            int totalInvRows = Math.max(1, (this.filteredPlayerInvSlots.size() + INV_COLS - 1) / INV_COLS);
-            int maxInvScroll = Math.max(0, totalInvRows - INV_ROWS);
-            this.invScrollRow = Mth.clamp(this.invScrollRow, 0, maxInvScroll);
-
-            int startInvIdx = this.invScrollRow * INV_COLS;
-            for (int i = 0; i < this.playerInvSlotWidgets.size(); i++) {
-                VaultItemSlotWidget widget = this.playerInvSlotWidgets.get(i);
-                int listIdx = startInvIdx + i;
-                if (listIdx < this.filteredPlayerInvSlots.size()) {
-                    int invSlot = this.filteredPlayerInvSlots.get(listIdx);
-                    ItemStack stack = inv.items.get(invSlot);
-                    ItemKey key = ItemKey.fromStack(stack);
-                    widget.bindItemStack(stack, !key.isEmpty() && key.equals(this.selectedItemKey));
-                } else {
-                    widget.bindItemStack(ItemStack.EMPTY, false);
-                }
-            }
-        }
     }
 
-    private boolean matchesSearchQuery(Minecraft mc, VaultEntry entry, String rawQuery) {
+    private boolean matchesSearchQuery(Minecraft mc, ItemKey key, ItemStack stack, String rawQuery) {
         if (rawQuery == null || rawQuery.isEmpty()) {
             return true;
         }
+        if (key.isEmpty() || stack.isEmpty()) {
+            return false;
+        }
         String query = rawQuery.toLowerCase(Locale.ROOT);
-        ItemKey key = entry.getKey();
-        ItemStack stack = entry.createDisplayStack();
 
-        // @mod namespace search
         if (query.startsWith("@")) {
             String modQuery = query.substring(1).trim();
             return key.getNamespace().toLowerCase(Locale.ROOT).contains(modQuery);
         }
 
-        // #tag or #tooltip lore search
         if (query.startsWith("#")) {
             String tagOrLoreQuery = query.substring(1).trim();
             if (tagOrLoreQuery.isEmpty()) {
@@ -502,7 +551,6 @@ public class SoulsVaultScreen extends Screen {
             return false;
         }
 
-        // Default item name & registry path search
         String displayName = stack.getHoverName().getString().toLowerCase(Locale.ROOT);
         if (displayName.contains(query)) {
             return true;
@@ -511,9 +559,7 @@ public class SoulsVaultScreen extends Screen {
     }
 
     @Override
-    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        this.renderBackground(graphics);
-
+    protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
         // Outer gothic charcoal window background + weathered bronze double-frame
         graphics.fill(this.leftPos, this.topPos, this.leftPos + WINDOW_WIDTH, this.topPos + WINDOW_HEIGHT, COLOR_CHARCOAL_BG);
         VaultItemSlotWidget.drawBorder(graphics, this.leftPos, this.topPos, WINDOW_WIDTH, WINDOW_HEIGHT, COLOR_BRONZE);
@@ -522,7 +568,7 @@ public class SoulsVaultScreen extends Screen {
         int leftPaneX = this.leftPos + LEFT_PANE_OFFSET_X;
         int rightPaneX = this.leftPos + RIGHT_PANE_OFFSET_X;
         int paneTopY = this.topPos + 42;
-        int leftPaneHeight = WINDOW_HEIGHT - 68;
+        int leftPaneHeight = WINDOW_HEIGHT - 65;
 
         // Window title
         graphics.drawString(this.font, this.title, leftPaneX, this.topPos + 7, COLOR_GOLD, true);
@@ -551,51 +597,54 @@ public class SoulsVaultScreen extends Screen {
         graphics.fill(leftPaneX, paneTopY, leftPaneX + LEFT_PANE_WIDTH, paneTopY + leftPaneHeight, COLOR_PANE_BG);
         VaultItemSlotWidget.drawBorder(graphics, leftPaneX, paneTopY, LEFT_PANE_WIDTH, leftPaneHeight, COLOR_BRONZE_MUTED);
 
-        String leftSub = this.font.plainSubstrByWidth(
-                Component.translatable("gui.soulsvault.subtitle.inventory").getString(),
-                LEFT_PANE_WIDTH - 14
+        // Render active Left-Pane Top Section (Gear & Curios | 3x3 Crafting | Build Echoes)
+        LeftPaneMode leftMode = this.menu.getLeftPaneMode();
+        if (leftMode == LeftPaneMode.GEAR_CURIOS) {
+            renderGearAndCuriosBg(graphics);
+        } else if (leftMode == LeftPaneMode.CRAFTING) {
+            renderCraftingGridBg(graphics, leftPaneX);
+        } else if (leftMode == LeftPaneMode.BUILD_ECHOES) {
+            renderBuildEchoesDrawer(graphics, leftPaneX, this.topPos + 60, LEFT_PANE_WIDTH, mouseX, mouseY);
+        }
+
+        // Divider above 36-Slot Player Inventory
+        graphics.fill(leftPaneX + 6, this.topPos + 129, leftPaneX + LEFT_PANE_WIDTH - 6, this.topPos + 130, COLOR_BRONZE_MUTED);
+        graphics.drawString(
+                this.font,
+                Component.translatable("gui.soulsvault.subtitle.inventory"),
+                leftPaneX + 7,
+                this.topPos + 131,
+                COLOR_TEXT_SUB,
+                false
         );
-        graphics.drawString(this.font, leftSub, leftPaneX + 7, paneTopY + 3, COLOR_TEXT_SUB, false);
 
-        // Render Equipment Strip & either Build Echoes Drawer or Player Inventory Grid
-        for (VaultItemSlotWidget eqSlot : this.equipmentSlotWidgets) {
-            eqSlot.render(graphics, mouseX, mouseY);
-        }
+        // Render Gothic Slot Frames & Category/Search Highlights for all active Menu Slots
+        renderMenuSlotFrames(graphics);
 
-        graphics.fill(leftPaneX + 6, this.topPos + 80, leftPaneX + LEFT_PANE_WIDTH - 6, this.topPos + 81, COLOR_BRONZE_MUTED);
-        if (this.echoesDrawerOpen) {
-            renderBuildEchoesDrawer(graphics, leftPaneX, this.topPos + 83, LEFT_PANE_WIDTH, mouseX, mouseY);
-        } else {
-            String catLabel = this.font.plainSubstrByWidth(this.selectedCategory.getDisplayName().getString(), 74);
-            graphics.drawString(this.font, catLabel, leftPaneX + 7, this.topPos + 86, COLOR_GOLD, false);
-
-            for (VaultItemSlotWidget invSlot : this.playerInvSlotWidgets) {
-                invSlot.render(graphics, mouseX, mouseY);
-            }
-        }
-
-        // Right Pane: either Virtualized Vault Grid or Detailed ItemInspectionPane
+        // Right Pane: either Detailed ItemInspectionPane or Virtualized Vault Grid Background
         if (this.inspectionMode) {
             this.inspectionPane.setInspectedKey(this.selectedItemKey);
             this.inspectionPane.render(graphics, mouseX, mouseY, partialTick);
         } else {
-            int vaultPaneH = WINDOW_HEIGHT - 50;
+            int vaultPaneH = WINDOW_HEIGHT - 48;
             graphics.fill(rightPaneX, paneTopY, rightPaneX + RIGHT_PANE_WIDTH, paneTopY + vaultPaneH, COLOR_PANE_BG);
             VaultItemSlotWidget.drawBorder(graphics, rightPaneX, paneTopY, RIGHT_PANE_WIDTH, vaultPaneH, COLOR_BRONZE_MUTED);
 
             String headerRight = this.selectedCategory.getDisplayName().getString()
                     + " (" + this.filteredVaultEntries.size() + ")";
-            graphics.drawString(this.font, headerRight, rightPaneX + 10, paneTopY + 4, COLOR_GOLD, false);
+            graphics.drawString(this.font, headerRight, rightPaneX + 18, paneTopY + 5, COLOR_GOLD, false);
 
-            for (VaultItemSlotWidget vaultSlot : this.vaultSlotWidgets) {
-                vaultSlot.render(graphics, mouseX, mouseY);
+            if (!this.menu.isVaultAccessAllowed()) {
+                String lockedNotice = Component.translatable("gui.soulsvault.notice.rest_point_required").getString();
+                int nw = this.font.width(lockedNotice);
+                graphics.drawString(this.font, lockedNotice, rightPaneX + RIGHT_PANE_WIDTH - nw - 8, paneTopY + 5, 0xFFE06C50, false);
             }
 
             // Vault scrollbar track
             int totalVaultRows = Math.max(1, (this.filteredVaultEntries.size() + VAULT_COLS - 1) / VAULT_COLS);
             if (totalVaultRows > VAULT_ROWS) {
-                int trackX = rightPaneX + RIGHT_PANE_WIDTH - 6;
-                int trackY = this.topPos + 56;
+                int trackX = rightPaneX + RIGHT_PANE_WIDTH - 8;
+                int trackY = this.topPos + 58;
                 int trackH = VAULT_ROWS * VAULT_SLOT_STEP - 2;
                 graphics.fill(trackX, trackY, trackX + 2, trackY + trackH, 0x802A241C);
                 int maxScroll = totalVaultRows - VAULT_ROWS;
@@ -604,20 +653,120 @@ public class SoulsVaultScreen extends Screen {
                 graphics.fill(trackX, thumbY, trackX + 2, thumbY + thumbH, COLOR_GOLD);
             }
         }
+    }
 
-        // Render standard widgets (Category Tabs, Search Box, GothicButtons)
-        super.render(graphics, mouseX, mouseY, partialTick);
-
-        // Render Shift + Right-Click Refill Popover if open
-        if (this.refillPopover != null) {
-            this.refillPopover.render(graphics, this.font, mouseX, mouseY);
-        } else {
-            renderHoveredTooltips(graphics, mouseX, mouseY);
+    private void renderGearAndCuriosBg(GuiGraphics graphics) {
+        int leftPaneX = this.leftPos + LEFT_PANE_OFFSET_X;
+        List<SoulsVaultMenu.AccessoryMenuSlot> accSlots = this.menu.getVisibleAccessorySlots();
+        if (accSlots.isEmpty()) {
+            graphics.drawString(
+                    this.font,
+                    Component.translatable("gui.soulsvault.notice.no_curios"),
+                    leftPaneX + 8,
+                    this.topPos + 98,
+                    0xFF6B6257,
+                    false
+            );
         }
     }
 
-    private void renderHoveredTooltips(GuiGraphics graphics, int mouseX, int mouseY) {
-        // Category tab hover tooltips
+    private void renderCraftingGridBg(GuiGraphics graphics, int leftPaneX) {
+        int arrowX = this.leftPos + SoulsVaultMenu.CRAFT_GRID_X + 60;
+        int arrowY = this.topPos + SoulsVaultMenu.CRAFT_GRID_Y + 21;
+        graphics.drawString(this.font, "→", arrowX, arrowY, COLOR_GOLD, true);
+
+        // Ornate 24x24 frame around the Crafting Result Slot
+        int resBoxX = this.leftPos + SoulsVaultMenu.CRAFT_RESULT_X - 4;
+        int resBoxY = this.topPos + SoulsVaultMenu.CRAFT_RESULT_Y - 4;
+        graphics.fill(resBoxX, resBoxY, resBoxX + 24, resBoxY + 24, 0xF01C1612);
+        VaultItemSlotWidget.drawBorder(graphics, resBoxX, resBoxY, 24, 24, COLOR_GOLD);
+
+        String craftHint = Component.translatable("gui.soulsvault.crafting.auto_refill").getString();
+        graphics.pose().pushPose();
+        graphics.pose().translate(this.leftPos + SoulsVaultMenu.CRAFT_GRID_X + 58.0F, this.topPos + SoulsVaultMenu.CRAFT_GRID_Y + 42.0F, 0.0F);
+        graphics.pose().scale(0.68F, 0.68F, 1.0F);
+        graphics.drawString(this.font, craftHint, 0, 0, COLOR_TEXT_SUB, false);
+        graphics.pose().popPose();
+    }
+
+    private void renderMenuSlotFrames(GuiGraphics graphics) {
+        Minecraft mc = Minecraft.getInstance();
+        String query = this.searchBox != null ? this.searchBox.getValue().trim() : "";
+        boolean hasFilter = (this.selectedCategory != VaultCategory.ALL) || !query.isEmpty();
+
+        for (Slot slot : this.menu.slots) {
+            if (!slot.isActive()) {
+                continue;
+            }
+            int sx = this.leftPos + slot.x - 1;
+            int sy = this.topPos + slot.y - 1;
+
+            int borderColor = 0xFF3E3526;
+            ItemStack stack = slot.getItem();
+            if (!stack.isEmpty()) {
+                ItemKey key = ItemKey.fromStack(stack);
+                if (key.equals(this.selectedItemKey)) {
+                    borderColor = COLOR_GOLD;
+                } else if (hasFilter && slot.container == this.menu.slots.get(15).container) {
+                    boolean matches = this.selectedCategory.matches(stack) && matchesSearchQuery(mc, key, stack, query);
+                    if (matches) {
+                        borderColor = COLOR_GOLD;
+                    }
+                }
+            }
+
+            graphics.fill(sx, sy, sx + 18, sy + 18, 0xE60D0B0E);
+            VaultItemSlotWidget.drawBorder(graphics, sx, sy, 18, 18, borderColor);
+
+            // Render empty slot pixel-art silhouette if empty
+            if (stack.isEmpty()) {
+                ResourceLocation emptyIcon = null;
+                if (slot instanceof SoulsVaultMenu.EquipmentMenuSlot eqSlot) {
+                    emptyIcon = eqSlot.getEmptyIcon();
+                } else if (slot instanceof SoulsVaultMenu.OffhandMenuSlot offSlot) {
+                    emptyIcon = offSlot.getEmptyIcon();
+                } else if (slot instanceof SoulsVaultMenu.AccessoryMenuSlot accSlot) {
+                    emptyIcon = accSlot.getEmptyIcon();
+                }
+                if (emptyIcon != null) {
+                    graphics.blit(emptyIcon, this.leftPos + slot.x, this.topPos + slot.y, 0, 0, 16, 16, 16, 16);
+                }
+            }
+        }
+    }
+
+    @Override
+    protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
+        // Labels are rendered inside renderBg with exact layout coordinates
+    }
+
+    @Override
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        this.renderBackground(graphics);
+        super.render(graphics, mouseX, mouseY, partialTick);
+
+        if (this.refillPopover != null) {
+            this.refillPopover.render(graphics, this.font, mouseX, mouseY);
+        } else {
+            this.renderTooltip(graphics, mouseX, mouseY);
+        }
+    }
+
+    @Override
+    protected void renderTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        // 1. Standard Container Slot tooltips (including empty Curio/Accessory slot names)
+        if (this.menu.getCarried().isEmpty() && this.hoveredSlot != null) {
+            if (this.hoveredSlot.hasItem()) {
+                ItemStack stack = this.hoveredSlot.getItem();
+                graphics.renderTooltip(this.font, this.getTooltipFromContainerItem(stack), stack.getTooltipImage(), mouseX, mouseY);
+                return;
+            } else if (this.hoveredSlot instanceof SoulsVaultMenu.AccessoryMenuSlot accSlot) {
+                graphics.renderTooltip(this.font, accSlot.getAccess().getDisplayName(), mouseX, mouseY);
+                return;
+            }
+        }
+
+        // 2. Category tab hover tooltips
         for (CategoryTabButton tab : this.categoryTabButtons) {
             if (tab.isMouseOver(mouseX, mouseY)) {
                 graphics.renderTooltip(this.font, tab.getCategory().getDisplayName(), mouseX, mouseY);
@@ -625,10 +774,10 @@ public class SoulsVaultScreen extends Screen {
             }
         }
 
-        // Vault slot hover tooltips
+        // 3. Vault slot hover / controller-focused tooltips
         if (!this.inspectionMode) {
             for (VaultItemSlotWidget slot : this.vaultSlotWidgets) {
-                if (!slot.isEmpty() && slot.isMouseOver(mouseX, mouseY)) {
+                if (!slot.isEmpty() && (slot.isMouseOver(mouseX, mouseY) || slot.isFocused())) {
                     VaultEntry entry = slot.getEntry();
                     ItemStack stack = slot.getDisplayStack();
                     List<Component> tooltip = new ArrayList<>(getTooltipFromItem(Minecraft.getInstance(), stack));
@@ -643,33 +792,11 @@ public class SoulsVaultScreen extends Screen {
                         tooltip.add(Component.translatable("gui.soulsvault.tooltip.vault_controls")
                                 .withStyle(ChatFormatting.DARK_GRAY));
                     }
-                    graphics.renderTooltip(this.font, tooltip, stack.getTooltipImage(), mouseX, mouseY);
+                    int tx = slot.isMouseOver(mouseX, mouseY) ? mouseX : slot.getX() + 12;
+                    int ty = slot.isMouseOver(mouseX, mouseY) ? mouseY : slot.getY() + 12;
+                    graphics.renderTooltip(this.font, tooltip, stack.getTooltipImage(), tx, ty);
                     return;
                 }
-            }
-        }
-
-        // Player inventory slot hover tooltips
-        if (!this.echoesDrawerOpen) {
-            for (VaultItemSlotWidget slot : this.playerInvSlotWidgets) {
-                if (!slot.isEmpty() && slot.isMouseOver(mouseX, mouseY)) {
-                    ItemStack stack = slot.getDisplayStack();
-                    List<Component> tooltip = new ArrayList<>(getTooltipFromItem(Minecraft.getInstance(), stack));
-                    tooltip.add(Component.empty());
-                    tooltip.add(Component.translatable("gui.soulsvault.tooltip.inv_controls")
-                            .withStyle(ChatFormatting.DARK_GRAY));
-                    graphics.renderTooltip(this.font, tooltip, stack.getTooltipImage(), mouseX, mouseY);
-                    return;
-                }
-            }
-        }
-
-        // Equipment slot hover tooltips
-        for (VaultItemSlotWidget slot : this.equipmentSlotWidgets) {
-            if (!slot.isEmpty() && slot.isMouseOver(mouseX, mouseY)) {
-                ItemStack stack = slot.getDisplayStack();
-                graphics.renderTooltip(this.font, stack, mouseX, mouseY);
-                return;
             }
         }
     }
@@ -682,32 +809,30 @@ public class SoulsVaultScreen extends Screen {
             int mouseX,
             int mouseY
     ) {
-        graphics.drawString(
-                this.font,
-                Component.translatable("gui.soulsvault.subtitle.echoes"),
-                paneX + 7,
-                startY + 2,
-                COLOR_GOLD,
-                false
-        );
-
         List<BuildEcho> echoes = ClientVaultCache.getVaultData().getBuildEchoes();
-        int rowStartY = startY + 14;
-        int rowHeight = 21;
+        int visibleRows = 3;
+        int maxScroll = Math.max(0, Constants.MAX_BUILD_ECHOES - visibleRows);
+        this.buildEchoScroll = Mth.clamp(this.buildEchoScroll, 0, maxScroll);
+
+        int rowStartY = startY;
+        int rowHeight = 22;
         int cardX = paneX + 5;
         int cardW = paneW - 10;
 
-        for (int i = 0; i < Constants.MAX_BUILD_ECHOES; i++) {
-            int ry = rowStartY + i * rowHeight;
+        for (int v = 0; v < visibleRows; v++) {
+            int i = this.buildEchoScroll + v;
+            if (i >= Constants.MAX_BUILD_ECHOES) {
+                break;
+            }
+            int ry = rowStartY + v * rowHeight;
             BuildEcho echo = i < echoes.size() ? echoes.get(i) : null;
 
             graphics.fill(cardX, ry, cardX + cardW, ry + rowHeight - 2, 0xF016131A);
             VaultItemSlotWidget.drawBorder(graphics, cardX, ry, cardW, rowHeight - 2, COLOR_BRONZE_MUTED);
 
             String label = "#" + (i + 1);
-            graphics.drawString(this.font, label, cardX + 3, ry + 5, COLOR_GOLD, false);
+            graphics.drawString(this.font, label, cardX + 3, ry + 6, COLOR_GOLD, false);
 
-            // Render mini 11x11 icons for Mainhand, Offhand, and 4 Armor pieces
             int iconBaseX = cardX + 18;
             if (echo != null) {
                 List<ItemKey> previewKeys = new ArrayList<>(6);
@@ -721,22 +846,21 @@ public class SoulsVaultScreen extends Screen {
 
                 for (int k = 0; k < previewKeys.size(); k++) {
                     ItemKey ik = previewKeys.get(k);
-                    int ix = iconBaseX + k * 12;
+                    int ix = iconBaseX + k * 13;
                     int iy = ry + 3;
-                    graphics.fill(ix, iy, ix + 11, iy + 13, 0xFF0D0B0E);
+                    graphics.fill(ix, iy, ix + 12, iy + 13, 0xFF0D0B0E);
                     if (!ik.isEmpty()) {
                         graphics.pose().pushPose();
-                        graphics.pose().translate(ix - 0.5F, iy + 0.5F, 100.0F);
-                        graphics.pose().scale(0.68F, 0.68F, 1.0F);
+                        graphics.pose().translate(ix, iy + 0.5F, 100.0F);
+                        graphics.pose().scale(0.7F, 0.7F, 1.0F);
                         graphics.renderItem(ik.toSingleStack(), 0, 0);
                         graphics.pose().popPose();
                     }
                 }
             } else {
-                graphics.drawString(this.font, "Empty Preset", iconBaseX + 2, ry + 5, 0xFF685F54, false);
+                graphics.drawString(this.font, "Empty Preset", iconBaseX + 2, ry + 6, 0xFF685F54, false);
             }
 
-            // Render [Save] and [Swap] buttons on the right side of the row
             int saveBtnX = cardX + cardW - 64;
             int loadBtnX = cardX + cardW - 32;
             int btnY = ry + 3;
@@ -755,6 +879,7 @@ public class SoulsVaultScreen extends Screen {
             graphics.drawString(this.font, saveStr, 0, 0, saveHov ? COLOR_GOLD : COLOR_TEXT_MAIN, false);
             graphics.pose().popPose();
 
+            graphics.fill(loadBtnX, btnY, loadBtnX + btnW, loadBtnX + btnW, loadHov ? 0xFF2D2418 : 0xFF1B171E);
             graphics.fill(loadBtnX, btnY, loadBtnX + btnW, btnY + btnH, loadHov ? 0xFF2D2418 : 0xFF1B171E);
             VaultItemSlotWidget.drawBorder(graphics, loadBtnX, btnY, btnW, btnH, loadHov ? COLOR_GOLD : COLOR_BRONZE);
             String loadStr = Component.translatable("gui.soulsvault.action.echo_load").getString();
@@ -768,7 +893,7 @@ public class SoulsVaultScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        // First handle active Refill Mini-Popover clicks
+        // 1. Handle active Refill Mini-Popover clicks
         if (this.refillPopover != null) {
             if (this.refillPopover.mouseClicked(mouseX, mouseY, button)) {
                 return true;
@@ -776,7 +901,7 @@ public class SoulsVaultScreen extends Screen {
             this.refillPopover = null;
         }
 
-        // Clicking anywhere inside the custom search box frame focuses the search box
+        // 2. Search box focus
         int rightPaneX = this.leftPos + RIGHT_PANE_OFFSET_X;
         int searchY = this.topPos + 22;
         if (this.searchBox != null
@@ -792,53 +917,52 @@ public class SoulsVaultScreen extends Screen {
             this.searchBox.setFocused(false);
         }
 
-        // Handle Inspection Pane clicks when active
+        // 3. Handle Inspection Pane clicks when active
         if (this.inspectionMode && this.inspectionPane != null) {
             if (this.inspectionPane.mouseClicked(mouseX, mouseY, button)) {
                 return true;
             }
         }
 
-        // Handle Vault Grid Slot clicks when in Grid Mode
-        if (!this.inspectionMode) {
-            for (VaultItemSlotWidget slot : this.vaultSlotWidgets) {
-                if (!slot.isEmpty() && slot.isMouseOver(mouseX, mouseY)) {
-                    VaultEntry entry = slot.getEntry();
-                    if (entry != null) {
-                        handleVaultSlotClick(entry, slot.getX(), slot.getY(), button);
-                        return true;
-                    }
-                }
+        // 4. If carrying an item on the cursor and clicking inside the Right Vault Pane, deposit carried item!
+        if (!this.inspectionMode
+                && !this.menu.getCarried().isEmpty()
+                && mouseX >= rightPaneX && mouseX < rightPaneX + RIGHT_PANE_WIDTH
+                && mouseY >= this.topPos + 42 && mouseY < this.topPos + WINDOW_HEIGHT - 6) {
+            if (button == 0 || button == 1) {
+                Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
+                Services.PLATFORM.sendToServer(PacketC2SVaultAction.depositCarried(button == 1));
+                return true;
             }
         }
 
-        // Handle Build Echoes Drawer clicks or Player Inventory Slot clicks (LeftPane)
-        if (this.echoesDrawerOpen) {
+        // 5. Handle Build Echoes Drawer clicks when active
+        if (this.menu.getLeftPaneMode() == LeftPaneMode.BUILD_ECHOES) {
             if (handleBuildEchoesDrawerClick(mouseX, mouseY, button)) {
                 return true;
             }
-        } else {
-            for (VaultItemSlotWidget slot : this.playerInvSlotWidgets) {
-                if (!slot.isEmpty() && slot.isMouseOver(mouseX, mouseY)) {
-                    handlePlayerInventorySlotClick(slot.getDisplayStack(), button);
-                    return true;
-                }
-            }
         }
 
-        // Handle Equipment Slot selection for Inspection
-        for (VaultItemSlotWidget slot : this.equipmentSlotWidgets) {
-            if (!slot.isEmpty() && slot.isMouseOver(mouseX, mouseY)) {
-                this.selectedItemKey = ItemKey.fromStack(slot.getDisplayStack());
-                if (this.inspectionPane != null) {
-                    this.inspectionPane.setInspectedKey(this.selectedItemKey);
-                }
-                refreshAllSlots();
-                return true;
+        // 6. Update selected item for Inspection when clicking any container slot
+        Slot clickedSlot = this.findSlot(mouseX, mouseY);
+        if (clickedSlot != null && clickedSlot.hasItem()) {
+            this.selectedItemKey = ItemKey.fromStack(clickedSlot.getItem());
+            if (this.inspectionPane != null) {
+                this.inspectionPane.setInspectedKey(this.selectedItemKey);
             }
         }
 
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Nullable
+    private Slot findSlot(double mouseX, double mouseY) {
+        for (Slot slot : this.menu.slots) {
+            if (slot.isActive() && this.isHovering(slot.x, slot.y, 16, 16, mouseX, mouseY)) {
+                return slot;
+            }
+        }
+        return null;
     }
 
     private boolean handleBuildEchoesDrawerClick(double mouseX, double mouseY, int button) {
@@ -847,9 +971,8 @@ public class SoulsVaultScreen extends Screen {
         }
         int paneX = this.leftPos + LEFT_PANE_OFFSET_X;
         int paneW = LEFT_PANE_WIDTH;
-        int startY = this.topPos + 83;
-        int rowStartY = startY + 14;
-        int rowHeight = 21;
+        int rowStartY = this.topPos + 60;
+        int rowHeight = 22;
         int cardX = paneX + 5;
         int cardW = paneW - 10;
 
@@ -858,8 +981,12 @@ public class SoulsVaultScreen extends Screen {
         int btnW = 30;
         int btnH = 13;
 
-        for (int i = 0; i < Constants.MAX_BUILD_ECHOES; i++) {
-            int ry = rowStartY + i * rowHeight;
+        for (int v = 0; v < 3; v++) {
+            int i = this.buildEchoScroll + v;
+            if (i >= Constants.MAX_BUILD_ECHOES) {
+                break;
+            }
+            int ry = rowStartY + v * rowHeight;
             int btnY = ry + 3;
 
             if (mouseX >= saveBtnX && mouseX < saveBtnX + btnW && mouseY >= btnY && mouseY < btnY + btnH) {
@@ -876,7 +1003,18 @@ public class SoulsVaultScreen extends Screen {
         return false;
     }
 
-    private void handleVaultSlotClick(VaultEntry entry, int slotX, int slotY, int button) {
+    private void onVaultWidgetClicked(VaultItemSlotWidget widget, int button) {
+        // If holding a cursor stack, deposit it into the Vault
+        if (!this.menu.getCarried().isEmpty() && (button == 0 || button == 1)) {
+            Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
+            Services.PLATFORM.sendToServer(PacketC2SVaultAction.depositCarried(button == 1));
+            return;
+        }
+
+        VaultEntry entry = widget.getEntry();
+        if (entry == null || entry.getKey().isEmpty()) {
+            return;
+        }
         ItemKey key = entry.getKey();
         this.selectedItemKey = key;
         if (this.inspectionPane != null) {
@@ -892,8 +1030,8 @@ public class SoulsVaultScreen extends Screen {
 
         // Shift + Right-Click: Open inline mini-popover for autoRefill & refillTarget
         if (button == 1 && hasShiftDown()) {
-            int popX = Mth.clamp(slotX - 40, this.leftPos + RIGHT_PANE_OFFSET_X + 2, this.leftPos + WINDOW_WIDTH - 138);
-            int popY = Mth.clamp(slotY + 24, this.topPos + 46, this.topPos + WINDOW_HEIGHT - 68);
+            int popX = Mth.clamp(widget.getX() - 40, this.leftPos + RIGHT_PANE_OFFSET_X + 2, this.leftPos + WINDOW_WIDTH - 138);
+            int popY = Mth.clamp(widget.getY() + 24, this.topPos + 46, this.topPos + WINDOW_HEIGHT - 68);
             this.refillPopover = new RefillMiniPopover(popX, popY, key);
             refreshAllSlots();
             return;
@@ -901,40 +1039,19 @@ public class SoulsVaultScreen extends Screen {
 
         int maxStack = Math.max(1, key.getItem().getMaxStackSize());
         if (button == 0) {
-            // Left-Click: Withdraw 1 (or full stack if Shift held)
-            long amount = hasShiftDown() ? maxStack : 1L;
-            Services.PLATFORM.sendToServer(PacketC2SVaultAction.withdraw(key, amount));
+            if (hasShiftDown()) {
+                // Shift + Left-Click: Quick-withdraw a full stack directly into the player's inventory
+                Services.PLATFORM.sendToServer(PacketC2SVaultAction.withdraw(key, maxStack));
+            } else {
+                // Left-Click: Pick up a stack onto the cursor for drag-and-drop into Crafting/Equipment/Inventory
+                Services.PLATFORM.sendToServer(PacketC2SVaultAction.pickupToCursor(key, maxStack));
+            }
         } else if (button == 1) {
-            // Right-Click: Withdraw half stack
-            long amount = Math.max(1, maxStack / 2);
-            Services.PLATFORM.sendToServer(PacketC2SVaultAction.withdraw(key, amount));
+            // Right-Click: Pick up half a stack (or 1) onto the cursor
+            int half = Math.max(1, (int) Math.min(maxStack, entry.getCount()) / 2);
+            Services.PLATFORM.sendToServer(PacketC2SVaultAction.pickupToCursor(key, half));
         }
         refreshAllSlots();
-    }
-
-    private void handlePlayerInventorySlotClick(ItemStack stack, int button) {
-        ItemKey key = ItemKey.fromStack(stack);
-        if (key.isEmpty()) {
-            return;
-        }
-        this.selectedItemKey = key;
-        if (this.inspectionPane != null) {
-            this.inspectionPane.setInspectedKey(key);
-        }
-        Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
-
-        if (button == 2) {
-            Services.PLATFORM.sendToServer(PacketC2SVaultAction.toggleFavorite(key));
-            return;
-        }
-
-        if (button == 0) {
-            long amount = hasShiftDown() ? Constants.DEFAULT_MAX_STACK_CAPACITY : stack.getCount();
-            Services.PLATFORM.sendToServer(PacketC2SVaultAction.deposit(key, amount));
-        } else if (button == 1) {
-            long amount = Math.max(1, stack.getCount() / 2);
-            Services.PLATFORM.sendToServer(PacketC2SVaultAction.deposit(key, amount));
-        }
     }
 
     @Override
@@ -952,13 +1069,20 @@ public class SoulsVaultScreen extends Screen {
             this.vaultScrollRow = Mth.clamp(this.vaultScrollRow + step, 0, maxVaultScroll);
             refreshAllSlots();
             return true;
-        } else {
-            int totalInvRows = Math.max(1, (this.filteredPlayerInvSlots.size() + INV_COLS - 1) / INV_COLS);
-            int maxInvScroll = Math.max(0, totalInvRows - INV_ROWS);
-            this.invScrollRow = Mth.clamp(this.invScrollRow + step, 0, maxInvScroll);
-            refreshAllSlots();
+        } else if (this.menu.getLeftPaneMode() == LeftPaneMode.BUILD_ECHOES
+                && mouseY >= this.topPos + 58 && mouseY < this.topPos + 130) {
+            int maxEchoScroll = Math.max(0, Constants.MAX_BUILD_ECHOES - 3);
+            this.buildEchoScroll = Mth.clamp(this.buildEchoScroll + step, 0, maxEchoScroll);
+            return true;
+        } else if (this.menu.getLeftPaneMode() == LeftPaneMode.GEAR_CURIOS
+                && mouseY >= this.topPos + 58 && mouseY < this.topPos + 130
+                && this.menu.getTotalAccessoryPages() > 1) {
+            this.menu.setAccessoryPage(this.menu.getAccessoryPage() + step);
+            updateLeftPaneSubControls();
             return true;
         }
+
+        return super.mouseScrolled(mouseX, mouseY, delta);
     }
 
     @Override
@@ -971,7 +1095,7 @@ public class SoulsVaultScreen extends Screen {
             return this.searchBox.keyPressed(keyCode, scanCode, modifiers);
         }
 
-        // 'R' key toggles the Detailed Item Inspection Pane
+        // 'R' key toggles the Detailed Item Inspection Pane for the hovered or selected item
         if (keyCode == InputConstants.KEY_R) {
             updateHoveredSelectionBeforeInspect();
             toggleInspectionMode();
@@ -979,9 +1103,20 @@ public class SoulsVaultScreen extends Screen {
             return true;
         }
 
+        // 'C' key toggles the 3x3 Crafting Terminal
+        if (keyCode == InputConstants.KEY_C) {
+            setLeftPaneMode(this.menu.getLeftPaneMode() == LeftPaneMode.CRAFTING
+                    ? LeftPaneMode.GEAR_CURIOS
+                    : LeftPaneMode.CRAFTING);
+            Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
+            return true;
+        }
+
         // 'B' key toggles the Build Echoes Loadout Drawer
         if (keyCode == InputConstants.KEY_B) {
-            toggleEchoesDrawer();
+            setLeftPaneMode(this.menu.getLeftPaneMode() == LeftPaneMode.BUILD_ECHOES
+                    ? LeftPaneMode.GEAR_CURIOS
+                    : LeftPaneMode.BUILD_ECHOES);
             Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
             return true;
         }
@@ -990,33 +1125,20 @@ public class SoulsVaultScreen extends Screen {
     }
 
     private void updateHoveredSelectionBeforeInspect() {
+        if (this.hoveredSlot != null && this.hoveredSlot.hasItem()) {
+            this.selectedItemKey = ItemKey.fromStack(this.hoveredSlot.getItem());
+            return;
+        }
         Minecraft mc = Minecraft.getInstance();
         double mouseX = mc.mouseHandler.xpos() * (double) this.width / (double) mc.getWindow().getScreenWidth();
         double mouseY = mc.mouseHandler.ypos() * (double) this.height / (double) mc.getWindow().getScreenHeight();
 
         for (VaultItemSlotWidget slot : this.vaultSlotWidgets) {
-            if (!slot.isEmpty() && slot.isMouseOver(mouseX, mouseY) && slot.getEntry() != null) {
+            if (!slot.isEmpty() && (slot.isMouseOver(mouseX, mouseY) || slot.isFocused()) && slot.getEntry() != null) {
                 this.selectedItemKey = slot.getEntry().getKey();
                 return;
             }
         }
-        for (VaultItemSlotWidget slot : this.playerInvSlotWidgets) {
-            if (!slot.isEmpty() && slot.isMouseOver(mouseX, mouseY)) {
-                this.selectedItemKey = ItemKey.fromStack(slot.getDisplayStack());
-                return;
-            }
-        }
-        for (VaultItemSlotWidget slot : this.equipmentSlotWidgets) {
-            if (!slot.isEmpty() && slot.isMouseOver(mouseX, mouseY)) {
-                this.selectedItemKey = ItemKey.fromStack(slot.getDisplayStack());
-                return;
-            }
-        }
-    }
-
-    @Override
-    public boolean isPauseScreen() {
-        return false;
     }
 
     /**
@@ -1055,17 +1177,14 @@ public class SoulsVaultScreen extends Screen {
             boolean overflow = entry != null && entry.isOverflowDeposit();
             int target = entry != null ? entry.getRefillTarget() : Math.max(1, this.key.getItem().getMaxStackSize());
 
-            // Row 1: Toggle Auto-Refill
             if (mouseY >= this.y + 16 && mouseY < this.y + 28) {
                 Services.PLATFORM.sendToServer(PacketC2SVaultAction.setRefillTarget(this.key, target, !autoRefill, overflow));
                 return true;
             }
-            // Row 2: Toggle Pickup Overflow
             if (mouseY >= this.y + 29 && mouseY < this.y + 41) {
                 Services.PLATFORM.sendToServer(PacketC2SVaultAction.setRefillTarget(this.key, target, autoRefill, !overflow));
                 return true;
             }
-            // Row 3: -16 | -1 | +1 | +16
             if (mouseY >= this.y + 42 && mouseY < this.y + 55) {
                 int relX = (int) mouseX - (this.x + 4);
                 int segW = (WIDTH - 8) / 4;
@@ -1097,7 +1216,6 @@ public class SoulsVaultScreen extends Screen {
             String header = Component.translatable("gui.soulsvault.inspect.refill_target", target).getString();
             graphics.drawString(font, header, this.x + 5, this.y + 4, COLOR_GOLD, true);
 
-            // Auto-Refill toggle row
             int r1Color = autoRefill ? 0xFFE06C50 : COLOR_TEXT_SUB;
             graphics.fill(this.x + 4, this.y + 16, this.x + WIDTH - 4, this.y + 27, 0xFF1E1A22);
             graphics.drawString(
@@ -1109,7 +1227,6 @@ public class SoulsVaultScreen extends Screen {
                     false
             );
 
-            // Overflow toggle row
             int r2Color = overflow ? 0xFF4FA8B8 : COLOR_TEXT_SUB;
             graphics.fill(this.x + 4, this.y + 29, this.x + WIDTH - 4, this.y + 40, 0xFF1E1A22);
             graphics.drawString(
@@ -1121,7 +1238,6 @@ public class SoulsVaultScreen extends Screen {
                     false
             );
 
-            // Target adjustment buttons (-16, -1, +1, +16)
             String[] labels = {"-16", "-1", "+1", "+16"};
             int segW = (WIDTH - 8) / 4;
             for (int i = 0; i < 4; i++) {

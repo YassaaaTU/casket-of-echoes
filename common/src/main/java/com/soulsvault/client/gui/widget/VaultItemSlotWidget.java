@@ -1,20 +1,26 @@
 package com.soulsvault.client.gui.widget;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.soulsvault.core.VaultEntry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.narration.NarrationElementOutput;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 
 import javax.annotation.Nullable;
 import java.util.Locale;
+import java.util.function.BiConsumer;
 
 /**
- * Virtualized dark gothic item slot renderer supporting stack counts > 64 with compact formatting
- * (e.g., 999, 4.2k, 10k) and Favorite / Auto-Refill / Overflow badges.
+ * Virtualized dark gothic item slot widget supporting stack counts > 64 with compact formatting
+ * (e.g., 999, 4.2k, 10k), Favorite / Auto-Refill / Overflow badges, and native Controller / Gamepad
+ * focus and cursor-snapping via {@link AbstractWidget}.
  */
-public final class VaultItemSlotWidget {
+public final class VaultItemSlotWidget extends AbstractWidget {
     public static final int SLOT_SIZE = 24;
 
     private static final int COLOR_SLOT_BG = 0xE60D0B0E;
@@ -27,8 +33,6 @@ public final class VaultItemSlotWidget {
     private static final int COLOR_REFILL_PIP = 0xFFE06C50;
     private static final int COLOR_OVERFLOW_PIP = 0xFF4FA8B8;
 
-    private final int x;
-    private final int y;
     private final int size;
     @Nullable
     private VaultEntry entry;
@@ -37,11 +41,26 @@ public final class VaultItemSlotWidget {
     private boolean selected;
     @Nullable
     private ResourceLocation emptyIcon;
+    @Nullable
+    private BiConsumer<VaultItemSlotWidget, Integer> clickHandler;
 
     public VaultItemSlotWidget(int x, int y, int size) {
-        this.x = x;
-        this.y = y;
+        this(x, y, size, null);
+    }
+
+    public VaultItemSlotWidget(
+            int x,
+            int y,
+            int size,
+            @Nullable BiConsumer<VaultItemSlotWidget, Integer> clickHandler
+    ) {
+        super(x, y, size, size, Component.empty());
         this.size = size;
+        this.clickHandler = clickHandler;
+    }
+
+    public void setClickHandler(@Nullable BiConsumer<VaultItemSlotWidget, Integer> clickHandler) {
+        this.clickHandler = clickHandler;
     }
 
     public void setEmptyIcon(@Nullable ResourceLocation emptyIcon) {
@@ -53,9 +72,11 @@ public final class VaultItemSlotWidget {
         if (entry != null && !entry.getKey().isEmpty()) {
             this.displayStack = entry.createDisplayStack();
             this.count = entry.getCount();
+            this.setMessage(this.displayStack.getHoverName());
         } else {
             this.displayStack = ItemStack.EMPTY;
             this.count = 0L;
+            this.setMessage(Component.empty());
         }
         this.selected = selected;
     }
@@ -65,19 +86,13 @@ public final class VaultItemSlotWidget {
         if (stack != null && !stack.isEmpty()) {
             this.displayStack = stack;
             this.count = stack.getCount();
+            this.setMessage(this.displayStack.getHoverName());
         } else {
             this.displayStack = ItemStack.EMPTY;
             this.count = 0L;
+            this.setMessage(Component.empty());
         }
         this.selected = selected;
-    }
-
-    public int getX() {
-        return this.x;
-    }
-
-    public int getY() {
-        return this.y;
     }
 
     public int getSize() {
@@ -101,22 +116,49 @@ public final class VaultItemSlotWidget {
         return this.displayStack.isEmpty();
     }
 
-    public boolean isMouseOver(double mouseX, double mouseY) {
-        return mouseX >= this.x && mouseX < (this.x + this.size)
-                && mouseY >= this.y && mouseY < (this.y + this.size);
+    @Override
+    protected boolean isValidClickButton(int button) {
+        return button == 0 || button == 1 || button == 2;
     }
 
-    public void render(GuiGraphics graphics, int mouseX, int mouseY) {
-        boolean hovered = isMouseOver(mouseX, mouseY);
-        int bgColor = this.selected ? COLOR_SLOT_SELECTED : (hovered ? COLOR_SLOT_HOVER : COLOR_SLOT_BG);
-        int borderColor = this.selected ? COLOR_BORDER_SELECTED : (hovered ? COLOR_BORDER_HOVER : COLOR_BORDER_IDLE);
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (!this.active || !this.visible) {
+            return false;
+        }
+        if (this.clicked(mouseX, mouseY) && isValidClickButton(button) && this.clickHandler != null) {
+            this.clickHandler.accept(this, button);
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (!this.active || !this.visible || !this.isFocused() || this.clickHandler == null) {
+            return false;
+        }
+        if (keyCode == InputConstants.KEY_RETURN || keyCode == InputConstants.KEY_NUMPADENTER || keyCode == InputConstants.KEY_SPACE) {
+            this.clickHandler.accept(this, 0);
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        int x = getX();
+        int y = getY();
+        boolean hoveredOrFocused = this.isHoveredOrFocused();
+        int bgColor = this.selected ? COLOR_SLOT_SELECTED : (hoveredOrFocused ? COLOR_SLOT_HOVER : COLOR_SLOT_BG);
+        int borderColor = this.selected ? COLOR_BORDER_SELECTED : (hoveredOrFocused ? COLOR_BORDER_HOVER : COLOR_BORDER_IDLE);
 
         // Background & 1px gothic frame
-        graphics.fill(this.x, this.y, this.x + this.size, this.y + this.size, bgColor);
-        drawBorder(graphics, this.x, this.y, this.size, this.size, borderColor);
+        graphics.fill(x, y, x + this.size, y + this.size, bgColor);
+        drawBorder(graphics, x, y, this.size, this.size, borderColor);
 
-        int iconX = this.x + (this.size - 16) / 2;
-        int iconY = this.y + (this.size - 16) / 2;
+        int iconX = x + (this.size - 16) / 2;
+        int iconY = y + (this.size - 16) / 2;
 
         if (this.displayStack.isEmpty()) {
             if (this.emptyIcon != null) {
@@ -128,20 +170,19 @@ public final class VaultItemSlotWidget {
         Font font = Minecraft.getInstance().font;
 
         graphics.renderItem(this.displayStack, iconX, iconY);
-        // Pass empty string to render durability/cooldown bars without vanilla's 2-digit stack count
         graphics.renderItemDecorations(font, this.displayStack, iconX, iconY, "");
 
         // Render Favorite / AutoRefill / Overflow status badges if bound to a VaultEntry
         if (this.entry != null) {
             if (this.entry.isFavorite()) {
                 graphics.pose().pushPose();
-                graphics.pose().translate(this.x + 2.0F, this.y + 1.5F, 250.0F);
+                graphics.pose().translate(x + 2.0F, y + 1.5F, 250.0F);
                 graphics.pose().scale(0.6F, 0.6F, 1.0F);
                 graphics.drawString(font, "★", 0, 0, COLOR_FAVORITE_STAR, true);
                 graphics.pose().popPose();
             }
-            int pipX = this.x + this.size - 4;
-            int pipY = this.y + 2;
+            int pipX = x + this.size - 4;
+            int pipY = y + 2;
             if (this.entry.isAutoRefill()) {
                 graphics.fill(pipX, pipY, pipX + 2, pipY + 2, COLOR_REFILL_PIP);
                 pipY += 3;
@@ -158,12 +199,17 @@ public final class VaultItemSlotWidget {
             int textColor = this.count == 0L ? 0xFF8A7B7B : 0xFFF2ECE1;
 
             graphics.pose().pushPose();
-            graphics.pose().translate(this.x + this.size - 2.0F, this.y + this.size - 2.0F, 250.0F);
+            graphics.pose().translate(x + this.size - 2.0F, y + this.size - 2.0F, 250.0F);
             graphics.pose().scale(scale, scale, 1.0F);
             int textWidth = font.width(countText);
             graphics.drawString(font, countText, -textWidth, -font.lineHeight + 2, textColor, true);
             graphics.pose().popPose();
         }
+    }
+
+    @Override
+    protected void updateWidgetNarration(NarrationElementOutput narrationElementOutput) {
+        defaultButtonNarrationText(narrationElementOutput);
     }
 
     public static void drawBorder(GuiGraphics graphics, int x, int y, int width, int height, int color) {

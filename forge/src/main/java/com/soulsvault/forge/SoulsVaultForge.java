@@ -4,6 +4,7 @@ import com.soulsvault.CommonClass;
 import com.soulsvault.Constants;
 import com.soulsvault.core.VaultCategory;
 import com.soulsvault.forge.client.ForgeClientEvents;
+import com.soulsvault.forge.config.ForgeSoulsVaultConfig;
 import com.soulsvault.forge.event.ForgeServerEvents;
 import com.soulsvault.forge.network.ForgeNetworkHandler;
 import com.soulsvault.forge.registry.ForgeModBlocks;
@@ -23,6 +24,7 @@ public class SoulsVaultForge {
         CommonClass.init();
 
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
+        ForgeSoulsVaultConfig.register(modEventBus);
         ForgeModBlocks.register(modEventBus);
         modEventBus.addListener(this::onCommonSetup);
 

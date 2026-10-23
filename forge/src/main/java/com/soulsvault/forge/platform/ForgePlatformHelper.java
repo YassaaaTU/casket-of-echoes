@@ -1,23 +1,30 @@
 package com.soulsvault.forge.platform;
 
+import com.soulsvault.core.AccessorySlotAccess;
 import com.soulsvault.core.ItemKey;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.core.VaultEntry;
+import com.soulsvault.forge.compat.CosmeticArmorCompat;
 import com.soulsvault.forge.compat.CuriosCompat;
 import com.soulsvault.forge.compat.EpicFightCompat;
+import com.soulsvault.forge.compat.WaystonesCompat;
 import com.soulsvault.forge.data.ForgeVaultSavedData;
 import com.soulsvault.forge.network.ForgeNetworkHandler;
 import com.soulsvault.forge.registry.ForgeModBlocks;
 import com.soulsvault.platform.services.IPlatformHelper;
 import com.soulsvault.world.entity.SpectralCasketEntity;
+import com.soulsvault.world.inventory.SoulsVaultMenu;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.loading.FMLLoader;
+import net.minecraftforge.network.NetworkHooks;
 
 import javax.annotation.Nullable;
 import java.util.List;
@@ -69,6 +76,40 @@ public class ForgePlatformHelper implements IPlatformHelper {
             Set<ItemKey> modifiedKeys
     ) {
         CuriosCompat.swapCurios(player, vaultData, desiredCurios, modifiedKeys);
+    }
+
+    @Override
+    public List<AccessorySlotAccess> getAccessorySlots(Player player, boolean cosmetic) {
+        return CuriosCompat.getAccessorySlots(player, cosmetic);
+    }
+
+    @Override
+    public List<AccessorySlotAccess> getCosmeticArmorSlots(Player player) {
+        return CosmeticArmorCompat.getCosmeticArmorSlots(player);
+    }
+
+    @Override
+    public boolean triggerWaystonesButton() {
+        return WaystonesCompat.triggerInventoryWaystoneAction();
+    }
+
+    @Override
+    public MenuType<SoulsVaultMenu> getVaultMenuType() {
+        return ForgeModBlocks.VAULT_MENU.get();
+    }
+
+    @Override
+    public void openVaultMenu(ServerPlayer player, boolean openedAtRestPoint) {
+        PlayerVaultData vaultData = getPlayerVaultData(player);
+        syncFullVaultToClient(player, vaultData);
+        NetworkHooks.openScreen(
+                player,
+                new SimpleMenuProvider(
+                        (containerId, playerInventory, p) -> new SoulsVaultMenu(containerId, playerInventory, openedAtRestPoint),
+                        Component.translatable("gui.soulsvault.title")
+                ),
+                buf -> buf.writeBoolean(openedAtRestPoint)
+        );
     }
 
     @Override
