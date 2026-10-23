@@ -149,9 +149,9 @@ public final class VaultItemSlotWidget extends AbstractWidget {
     protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         int x = getX();
         int y = getY();
-        boolean hoveredOrFocused = this.isHoveredOrFocused();
-        int bgColor = this.selected ? COLOR_SLOT_SELECTED : (hoveredOrFocused ? COLOR_SLOT_HOVER : COLOR_SLOT_BG);
-        int borderColor = this.selected ? COLOR_BORDER_SELECTED : (hoveredOrFocused ? COLOR_BORDER_HOVER : COLOR_BORDER_IDLE);
+        boolean hovered = this.isHovered();
+        int bgColor = this.selected ? COLOR_SLOT_SELECTED : (hovered ? COLOR_SLOT_HOVER : COLOR_SLOT_BG);
+        int borderColor = this.selected ? COLOR_BORDER_SELECTED : (hovered ? COLOR_BORDER_HOVER : COLOR_BORDER_IDLE);
 
         // Background & 1px gothic frame
         graphics.fill(x, y, x + this.size, y + this.size, bgColor);

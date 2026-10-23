@@ -96,6 +96,7 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
     private GothicButton sortButton;
     private GothicButton inspectToggleButton;
     private GothicButton invModeConfigButton;
+    private GothicButton helpLegendButton;
     @Nullable
     private GothicButton waystonesButton;
 
@@ -186,10 +187,10 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
         );
         addRenderableWidget(this.sortButton);
 
-        // 3. Header Right Controls: Waystones Button (if loaded), Full-Inventory Config Toggle, Inspect Mode Toggle
+        // 3. Header Right Controls: Waystones Button (if loaded), Full-Inventory Config Toggle, Inspect Mode, [?] Help Legend
         if (Services.PLATFORM.isModLoaded("waystones")) {
             this.waystonesButton = new GothicButton(
-                    this.leftPos + WINDOW_WIDTH - 208,
+                    this.leftPos + WINDOW_WIDTH - 224,
                     this.topPos + 4,
                     48,
                     14,
@@ -200,9 +201,9 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
         }
 
         this.invModeConfigButton = new GothicButton(
-                this.leftPos + WINDOW_WIDTH - 156,
+                this.leftPos + WINDOW_WIDTH - 172,
                 this.topPos + 4,
-                74,
+                72,
                 14,
                 getInvModeConfigLabel(),
                 btn -> {
@@ -215,15 +216,26 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
         addRenderableWidget(this.invModeConfigButton);
 
         this.inspectToggleButton = new GothicButton(
-                this.leftPos + WINDOW_WIDTH - 78,
+                this.leftPos + WINDOW_WIDTH - 96,
                 this.topPos + 4,
-                70,
+                68,
                 14,
                 getInspectButtonLabel(),
                 btn -> toggleInspectionMode()
         );
         this.inspectToggleButton.setHighlighted(this.inspectionMode);
         addRenderableWidget(this.inspectToggleButton);
+
+        this.helpLegendButton = new GothicButton(
+                this.leftPos + WINDOW_WIDTH - 24,
+                this.topPos + 4,
+                16,
+                14,
+                Component.literal("?"),
+                btn -> {
+                }
+        );
+        addRenderableWidget(this.helpLegendButton);
 
         // 4. Left-Pane Top Sub-Mode Tabs: [Gear & Curios] | [3x3 Craft] | [Echoes]
         int subTabY = this.topPos + 44;
@@ -608,15 +620,19 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
         }
 
         // Divider above 36-Slot Player Inventory
-        graphics.fill(leftPaneX + 6, this.topPos + 129, leftPaneX + LEFT_PANE_WIDTH - 6, this.topPos + 130, COLOR_BRONZE_MUTED);
+        graphics.fill(leftPaneX + 6, this.topPos + 126, leftPaneX + LEFT_PANE_WIDTH - 6, this.topPos + 127, COLOR_BRONZE_MUTED);
+        graphics.pose().pushPose();
+        graphics.pose().translate(leftPaneX + 7.0F, this.topPos + 129.0F, 0.0F);
+        graphics.pose().scale(0.85F, 0.85F, 1.0F);
         graphics.drawString(
                 this.font,
                 Component.translatable("gui.soulsvault.subtitle.inventory"),
-                leftPaneX + 7,
-                this.topPos + 131,
+                0,
+                0,
                 COLOR_TEXT_SUB,
                 false
         );
+        graphics.pose().popPose();
 
         // Render Gothic Slot Frames & Category/Search Highlights for all active Menu Slots
         renderMenuSlotFrames(graphics);
@@ -659,11 +675,15 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
         int leftPaneX = this.leftPos + LEFT_PANE_OFFSET_X;
         List<SoulsVaultMenu.AccessoryMenuSlot> accSlots = this.menu.getVisibleAccessorySlots();
         if (accSlots.isEmpty()) {
+            String msg = this.font.plainSubstrByWidth(
+                    Component.translatable("gui.soulsvault.notice.no_curios").getString(),
+                    LEFT_PANE_WIDTH - 14
+            );
             graphics.drawString(
                     this.font,
-                    Component.translatable("gui.soulsvault.notice.no_curios"),
-                    leftPaneX + 8,
-                    this.topPos + 98,
+                    msg,
+                    leftPaneX + 7,
+                    this.topPos + 96,
                     0xFF6B6257,
                     false
             );
@@ -766,7 +786,28 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
             }
         }
 
-        // 2. Category tab hover tooltips
+        // 2. [?] Controls Legend button tooltip
+        if (this.helpLegendButton != null && this.helpLegendButton.isMouseOver(mouseX, mouseY)) {
+            List<Component> helpLines = List.of(
+                    Component.translatable("gui.soulsvault.help.title").withStyle(ChatFormatting.GOLD),
+                    Component.literal("• L-Click Vault: ").withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal("Pick up stack to cursor").withStyle(ChatFormatting.WHITE)),
+                    Component.literal("• R-Click Vault: ").withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal("Pick up half stack").withStyle(ChatFormatting.WHITE)),
+                    Component.literal("• Shift + L-Click: ").withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal("Quick Deposit / Withdraw").withStyle(ChatFormatting.WHITE)),
+                    Component.literal("• M-Click Vault: ").withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal("Pin Favorite (★)").withStyle(ChatFormatting.YELLOW)),
+                    Component.literal("• Shift + R-Click Vault: ").withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal("Auto-Refill & Carry Cap").withStyle(ChatFormatting.AQUA)),
+                    Component.literal("• Hotkeys: ").withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal("[R] Inspect  [C] Craft  [B] Echoes").withStyle(ChatFormatting.GOLD))
+            );
+            graphics.renderComponentTooltip(this.font, helpLines, mouseX, mouseY);
+            return;
+        }
+
+        // 3. Category tab hover tooltips
         for (CategoryTabButton tab : this.categoryTabButtons) {
             if (tab.isMouseOver(mouseX, mouseY)) {
                 graphics.renderTooltip(this.font, tab.getCategory().getDisplayName(), mouseX, mouseY);
@@ -774,27 +815,22 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
             }
         }
 
-        // 3. Vault slot hover / controller-focused tooltips
+        // 4. Vault slot hover tooltips (only on mouse hover, never on sticky focus, and without wide footer text)
         if (!this.inspectionMode) {
             for (VaultItemSlotWidget slot : this.vaultSlotWidgets) {
-                if (!slot.isEmpty() && (slot.isMouseOver(mouseX, mouseY) || slot.isFocused())) {
+                if (!slot.isEmpty() && slot.isMouseOver(mouseX, mouseY)) {
                     VaultEntry entry = slot.getEntry();
                     ItemStack stack = slot.getDisplayStack();
                     List<Component> tooltip = new ArrayList<>(getTooltipFromItem(Minecraft.getInstance(), stack));
                     if (entry != null) {
-                        tooltip.add(Component.empty());
                         tooltip.add(Component.translatable("gui.soulsvault.inspect.stored_count", entry.getCount())
                                 .withStyle(ChatFormatting.GOLD));
                         if (entry.isAutoRefill() || entry.isOverflowDeposit()) {
                             tooltip.add(Component.translatable("gui.soulsvault.inspect.refill_target", entry.getRefillTarget())
                                     .withStyle(ChatFormatting.AQUA));
                         }
-                        tooltip.add(Component.translatable("gui.soulsvault.tooltip.vault_controls")
-                                .withStyle(ChatFormatting.DARK_GRAY));
                     }
-                    int tx = slot.isMouseOver(mouseX, mouseY) ? mouseX : slot.getX() + 12;
-                    int ty = slot.isMouseOver(mouseX, mouseY) ? mouseY : slot.getY() + 12;
-                    graphics.renderTooltip(this.font, tooltip, stack.getTooltipImage(), tx, ty);
+                    graphics.renderTooltip(this.font, tooltip, stack.getTooltipImage(), mouseX, mouseY);
                     return;
                 }
             }
@@ -879,7 +915,6 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
             graphics.drawString(this.font, saveStr, 0, 0, saveHov ? COLOR_GOLD : COLOR_TEXT_MAIN, false);
             graphics.pose().popPose();
 
-            graphics.fill(loadBtnX, btnY, loadBtnX + btnW, loadBtnX + btnW, loadHov ? 0xFF2D2418 : 0xFF1B171E);
             graphics.fill(loadBtnX, btnY, loadBtnX + btnW, btnY + btnH, loadHov ? 0xFF2D2418 : 0xFF1B171E);
             VaultItemSlotWidget.drawBorder(graphics, loadBtnX, btnY, btnW, btnH, loadHov ? COLOR_GOLD : COLOR_BRONZE);
             String loadStr = Component.translatable("gui.soulsvault.action.echo_load").getString();
