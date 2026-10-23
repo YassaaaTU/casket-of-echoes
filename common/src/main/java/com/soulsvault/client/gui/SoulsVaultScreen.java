@@ -38,6 +38,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Inventory;
@@ -101,6 +102,9 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
     private static final int VAULT_SLOT_STEP = 26;
     private static final int VAULT_GRID_OFFSET_X = RIGHT_PANE_OFFSET_X + 18;
     private static final int VAULT_GRID_OFFSET_Y = 58;
+    private static final int SEAL_PANEL_WIDTH = VAULT_COLS * VAULT_SLOT_STEP - 2;
+    private static final int SEAL_PANEL_HEIGHT = VAULT_ROWS * VAULT_SLOT_STEP - 2;
+    private static final int SEAL_BUTTON_Y = VAULT_GRID_OFFSET_Y + 112;
 
     private static final int ECHO_ROWS_VISIBLE = 3;
     private static final int ECHO_ROW_HEIGHT = 22;
@@ -336,9 +340,13 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
             }
         }
 
-        // 8. Remote access unlock (only shown while the configured remote cost is unpaid)
-        this.remoteUnlockButton = new GothicButton(rightPaneX + 39, this.topPos + 132, 140, 16,
-                remoteUnlockLabel(), btn -> Services.PLATFORM.sendToServer(PacketC2SVaultAction.unlockRemoteAccess()));
+        // 8. Remote access unlock, centred on the seal panel that replaces the grid while the cost is unpaid
+        Component unlockLabel = remoteUnlockLabel();
+        int unlockWidth = Math.min(SEAL_PANEL_WIDTH - 16, Math.max(120, this.font.width(unlockLabel) + 16));
+        this.remoteUnlockButton = new GothicButton(
+                this.leftPos + VAULT_GRID_OFFSET_X + (SEAL_PANEL_WIDTH - unlockWidth) / 2,
+                this.topPos + SEAL_BUTTON_Y, unlockWidth, 16,
+                unlockLabel, btn -> Services.PLATFORM.sendToServer(PacketC2SVaultAction.unlockRemoteAccess()));
         addRenderableWidget(this.remoteUnlockButton);
 
         this.inspectionPane = new ItemInspectionPane(rightPaneX, this.topPos + 42, RIGHT_PANE_WIDTH, WINDOW_HEIGHT - 48);
@@ -434,9 +442,22 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
         if (this.clearCraftingGridButton != null) {
             this.clearCraftingGridButton.visible = (mode == LeftPaneMode.CRAFTING);
         }
+        applyVaultGridVisibility();
+    }
+
+    /**
+     * The grid is hidden (not just dimmed) while the vault is sealed, so its slots can't swallow clicks meant for
+     * the seal panel's unlock button.
+     */
+    private boolean isVaultGridShown() {
+        return !this.inspectionMode && vaultDenialReason() == null;
+    }
+
+    private void applyVaultGridVisibility() {
+        boolean shown = isVaultGridShown();
         for (VaultItemSlotWidget vaultSlot : this.vaultSlotWidgets) {
-            vaultSlot.visible = !this.inspectionMode;
-            vaultSlot.active = !this.inspectionMode;
+            vaultSlot.visible = shown;
+            vaultSlot.active = shown;
         }
     }
 
@@ -447,6 +468,7 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
         if (this.restReplenishButton != null) {
             this.restReplenishButton.active = restDenialReason() == null;
         }
+        applyVaultGridVisibility();
         if (this.remoteUnlockButton != null) {
             this.remoteUnlockButton.visible = !this.inspectionMode && this.menu.needsRemoteUnlock() && !this.menu.isCombatLocked();
         }
@@ -467,6 +489,19 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
             return Component.translatable("gui.soulsvault.notice.rest_point_required");
         }
         return null;
+    }
+
+    /**
+     * What lifts the seal, shown under {@link #vaultDenialReason()} on the seal panel.
+     */
+    private Component vaultSealHint() {
+        if (this.menu.isCombatLocked()) {
+            return Component.translatable("gui.soulsvault.sealed.hint.combat");
+        }
+        if (this.menu.needsRemoteUnlock()) {
+            return Component.translatable("gui.soulsvault.sealed.hint.remote");
+        }
+        return Component.translatable("gui.soulsvault.sealed.hint.rest_point");
     }
 
     @Nullable
@@ -539,7 +574,6 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
         for (int i = 0; i < this.vaultSlotWidgets.size(); i++) {
             int entryIdx = startVaultIndex + i;
             VaultItemSlotWidget widget = this.vaultSlotWidgets.get(i);
-            widget.visible = !this.inspectionMode;
             if (entryIdx < view.size()) {
                 VaultEntry entry = view.get(entryIdx);
                 widget.bindVaultEntry(entry, entry.getKey().equals(this.selectedItemKey));
@@ -640,14 +674,12 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
 
         Component denial = vaultDenialReason();
         if (denial != null) {
-            String notice = this.font.plainSubstrByWidth(denial.getString(), RIGHT_PANE_WIDTH - this.font.width(headerLeft) - 30);
-            int nw = this.font.width(notice);
-            graphics.drawString(this.font, notice, rightPaneX + RIGHT_PANE_WIDTH - nw - 8, paneTopY + 5, COLOR_WARNING, false);
+            renderSealPanel(graphics, denial);
         }
 
         // Vault scrollbar track
         int totalVaultRows = Math.max(1, (view.size() + VAULT_COLS - 1) / VAULT_COLS);
-        if (totalVaultRows > VAULT_ROWS) {
+        if (denial == null && totalVaultRows > VAULT_ROWS) {
             int trackX = rightPaneX + RIGHT_PANE_WIDTH - 8;
             int trackY = this.topPos + VAULT_GRID_OFFSET_Y;
             int trackH = VAULT_ROWS * VAULT_SLOT_STEP - 2;
@@ -672,6 +704,46 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
                     VaultItemSlotWidget.formatCompactCount(meta.maxPerItem()));
         }
         drawScaled(graphics, footer, rightPaneX + 18.0F, footerY, 0.7F, COLOR_TEXT_SUB);
+    }
+
+    /**
+     * Stands in for the grid while the vault is sealed: a padlock, why it is sealed, what lifts the seal and (for an
+     * unpaid remote cost) the unlock button centred underneath.
+     */
+    private void renderSealPanel(GuiGraphics graphics, Component reason) {
+        int x = this.leftPos + VAULT_GRID_OFFSET_X;
+        int y = this.topPos + VAULT_GRID_OFFSET_Y;
+        int centerX = x + SEAL_PANEL_WIDTH / 2;
+        graphics.fill(x, y, x + SEAL_PANEL_WIDTH, y + SEAL_PANEL_HEIGHT, 0xF0080709);
+        VaultItemSlotWidget.drawBorder(graphics, x, y, SEAL_PANEL_WIDTH, SEAL_PANEL_HEIGHT, COLOR_BRONZE_MUTED);
+        VaultItemSlotWidget.drawBorder(graphics, x + 3, y + 3, SEAL_PANEL_WIDTH - 6, SEAL_PANEL_HEIGHT - 6, 0xFF2A241C);
+
+        // Padlock sigil
+        int lockY = y + 18;
+        graphics.fill(centerX - 5, lockY, centerX + 5, lockY + 2, COLOR_BRONZE);
+        graphics.fill(centerX - 5, lockY, centerX - 3, lockY + 8, COLOR_BRONZE);
+        graphics.fill(centerX + 3, lockY, centerX + 5, lockY + 8, COLOR_BRONZE);
+        graphics.fill(centerX - 8, lockY + 7, centerX + 8, lockY + 19, COLOR_BRONZE);
+        graphics.fill(centerX - 7, lockY + 8, centerX + 7, lockY + 18, 0xFF3A3020);
+        graphics.fill(centerX - 1, lockY + 11, centerX + 1, lockY + 15, COLOR_GOLD);
+
+        int textY = lockY + 27;
+        Component title = Component.translatable("gui.soulsvault.sealed.title");
+        graphics.drawString(this.font, title, centerX - this.font.width(title) / 2, textY, COLOR_GOLD, true);
+        textY += 14;
+        int wrapWidth = SEAL_PANEL_WIDTH - 20;
+        for (FormattedCharSequence line : this.font.split(reason, wrapWidth)) {
+            graphics.drawString(this.font, line, centerX - this.font.width(line) / 2, textY, COLOR_WARNING, false);
+            textY += 10;
+        }
+        textY += 2;
+        for (FormattedCharSequence line : this.font.split(vaultSealHint(), wrapWidth)) {
+            if (textY + 9 > this.topPos + SEAL_BUTTON_Y - 2) {
+                break;
+            }
+            graphics.drawString(this.font, line, centerX - this.font.width(line) / 2, textY, COLOR_TEXT_SUB, false);
+            textY += 10;
+        }
     }
 
     private void drawScaled(GuiGraphics graphics, Component text, float x, float y, float scale, int color) {
