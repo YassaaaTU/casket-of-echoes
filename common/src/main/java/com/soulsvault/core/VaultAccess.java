@@ -16,9 +16,9 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Server-side gate for Casket actions: the bonfire-only rules, the Souls "no resting with enemies nearby" combat
- * lock, and the loader's cancelable access event (so packs and KubeJS can add their own rules, e.g. no Casket
- * inside a boss arena).
+ * Server-side gate for Casket actions: Casket Attunement, the bonfire-only rules, the Souls "no resting with enemies
+ * nearby" combat lock, and the loader's cancelable access event (so packs and KubeJS can add their own rules, e.g.
+ * no Casket inside a boss arena).
  */
 public final class VaultAccess {
 
@@ -56,6 +56,12 @@ public final class VaultAccess {
      */
     @Nullable
     public static Component check(ServerPlayer player, Type type, boolean atRestPoint) {
+        if (type != Type.OPEN) {
+            Component unattuned = Attunement.getDenialReason(player);
+            if (unattuned != null) {
+                return unattuned;
+            }
+        }
         SoulsVaultConfig.RestPoints restPoints = SoulsVaultConfig.restPoints();
         if (type == Type.REST && restPoints.replenishRequiresRestPoint() && !atRestPoint) {
             return Component.translatable("gui.soulsvault.notice.rest_point_required");

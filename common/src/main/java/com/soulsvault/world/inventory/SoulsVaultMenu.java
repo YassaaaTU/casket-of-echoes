@@ -2,6 +2,7 @@ package com.soulsvault.world.inventory;
 
 import com.soulsvault.config.SoulsVaultConfig;
 import com.soulsvault.core.AccessorySlotAccess;
+import com.soulsvault.core.Attunement;
 import com.soulsvault.core.ItemKey;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.core.VaultAccess;
@@ -111,8 +112,9 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
 
     private static final int LOCK_COMBAT = 1;
     private static final int LOCK_REMOTE_UNLOCKED = 1 << 1;
+    private static final int LOCK_UNATTUNED = 1 << 2;
     private static final int LOCK_REFRESH_TICKS = 10;
-    /** Synced to the client: combat lock and whether the remote access cost was paid this session. */
+    /** Synced to the client: combat lock, attunement and whether the remote access cost was paid this session. */
     private final DataSlot lockState = DataSlot.standalone();
     private int lockRefreshCountdown = 0;
 
@@ -240,7 +242,7 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
      * it and any remote access cost was paid; never while combat-locked. Mirrors on the client via a data slot.
      */
     public boolean isVaultAccessAllowed() {
-        if (isCombatLocked()) {
+        if (isCombatLocked() || isUnattuned()) {
             return false;
         }
         if (this.grants.vault()) {
@@ -254,10 +256,18 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
     }
 
     /**
+     * Whether the Vault is sealed because the player hasn't attuned to the Casket yet ({@code vault.requireAttunement}).
+     */
+    public boolean isUnattuned() {
+        return (this.lockState.get() & LOCK_UNATTUNED) != 0;
+    }
+
+    /**
      * Whether the Vault pane shows the "unlock for a cost" button (remote session, cost configured, not yet paid).
      */
     public boolean needsRemoteUnlock() {
         return !this.grants.vault()
+                && !isUnattuned()
                 && SoulsVaultConfig.isAllowRemoteVaultInFullInventory()
                 && SoulsVaultConfig.remoteAccess().hasCost()
                 && (this.lockState.get() & LOCK_REMOTE_UNLOCKED) == 0;
@@ -268,6 +278,10 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
      */
     @Nullable
     public Component getVaultDenialReason(ServerPlayer serverPlayer) {
+        Component unattuned = Attunement.getDenialReason(serverPlayer);
+        if (unattuned != null) {
+            return unattuned;
+        }
         if (!this.grants.vault() && !SoulsVaultConfig.isAllowRemoteVaultInFullInventory()) {
             return Component.translatable("gui.soulsvault.notice.rest_point_required");
         }
@@ -340,8 +354,10 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
         if (this.player instanceof ServerPlayer serverPlayer && --this.lockRefreshCountdown <= 0) {
             this.lockRefreshCountdown = LOCK_REFRESH_TICKS;
             boolean combat = VaultAccess.getCombatReason(serverPlayer) != null;
+            boolean unattuned = !Attunement.isAttuned(serverPlayer);
             int state = this.lockState.get();
-            this.lockState.set(combat ? state | LOCK_COMBAT : state & ~LOCK_COMBAT);
+            state = combat ? state | LOCK_COMBAT : state & ~LOCK_COMBAT;
+            this.lockState.set(unattuned ? state | LOCK_UNATTUNED : state & ~LOCK_UNATTUNED);
         }
         super.broadcastChanges();
     }

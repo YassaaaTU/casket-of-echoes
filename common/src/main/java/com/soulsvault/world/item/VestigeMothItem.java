@@ -1,6 +1,7 @@
 package com.soulsvault.world.item;
 
 import com.soulsvault.config.SoulsVaultConfig;
+import com.soulsvault.core.Attunement;
 import com.soulsvault.platform.Services;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -41,6 +42,14 @@ public class VestigeMothItem extends Item {
         ItemStack stack = player.getItemInHand(usedHand);
         if (player.isSpectator()) {
             return InteractionResultHolder.pass(stack);
+        }
+
+        if (player instanceof ServerPlayer serverPlayer) {
+            Component unattuned = Attunement.getDenialReason(serverPlayer);
+            if (unattuned != null) {
+                serverPlayer.displayClientMessage(unattuned.copy().withStyle(ChatFormatting.RED), true);
+                return InteractionResultHolder.fail(stack);
+            }
         }
 
         boolean creative = player.getAbilities().instabuild;

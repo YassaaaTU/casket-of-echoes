@@ -43,6 +43,7 @@ public class PlayerVaultData {
     private static final String NBT_PREFS = "Prefs";
     private static final String NBT_BUILD_ECHOES = "BuildEchoes";
     private static final String NBT_ECHO_UPGRADES = "EchoSlotUpgrades";
+    private static final String NBT_ATTUNED = "Attuned";
 
     private static final EquipmentSlot[] ARMOR_SLOTS = {
             EquipmentSlot.HEAD,
@@ -58,6 +59,7 @@ public class PlayerVaultData {
     private final Map<ItemKey, ItemPrefs> prefs = new LinkedHashMap<>();
     private final List<BuildEcho> buildEchoes = new ArrayList<>();
     private int echoSlotUpgrades;
+    private boolean attuned;
     private Runnable dirtyListener = () -> {
     };
     @Nullable
@@ -197,6 +199,22 @@ public class PlayerVaultData {
 
     public List<BuildEcho> getBuildEchoes() {
         return Collections.unmodifiableList(this.buildEchoes);
+    }
+
+    // ------------------------------------------------------------------------------------------------ attunement
+
+    /**
+     * Raw attunement flag; use {@link Attunement#isAttuned} for the effective rule (config, creative mode).
+     */
+    public boolean isAttuned() {
+        return this.attuned;
+    }
+
+    public void setAttuned(boolean attuned) {
+        if (this.attuned != attuned) {
+            this.attuned = attuned;
+            markDirty();
+        }
     }
 
     // ------------------------------------------------------------------------------------------------ echo slots
@@ -786,7 +804,7 @@ public class PlayerVaultData {
      * Syncs deltas to every viewer and sends an overflow toast when items are routed to the Vault.
      */
     public PickupOverflowResult handleWorldItemPickup(ServerPlayer player, ItemStack entityStack) {
-        if (player == null || entityStack == null || entityStack.isEmpty()) {
+        if (player == null || entityStack == null || entityStack.isEmpty() || !Attunement.isAttuned(player)) {
             return PickupOverflowResult.NONE;
         }
 
@@ -940,6 +958,7 @@ public class PlayerVaultData {
         }
         root.put(NBT_BUILD_ECHOES, echoesTag);
         root.putInt(NBT_ECHO_UPGRADES, this.echoSlotUpgrades);
+        root.putBoolean(NBT_ATTUNED, this.attuned);
         return root;
     }
 
@@ -981,6 +1000,8 @@ public class PlayerVaultData {
             this.buildEchoes.add(BuildEcho.fromTag(echoesTag.getCompound(i)));
         }
         this.echoSlotUpgrades = Math.max(0, root.getInt(NBT_ECHO_UPGRADES));
+        // Caskets saved before attunement existed belong to players who were already using them
+        this.attuned = !root.contains(NBT_ATTUNED, Tag.TAG_BYTE) || root.getBoolean(NBT_ATTUNED);
     }
 
     public record RestReplenishResult(

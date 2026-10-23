@@ -479,6 +479,9 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
 
     @Nullable
     private Component vaultDenialReason() {
+        if (this.menu.isUnattuned()) {
+            return Component.translatable("gui.soulsvault.notice.not_attuned");
+        }
         if (this.menu.isCombatLocked()) {
             return Component.translatable("gui.soulsvault.notice.combat_locked");
         }
@@ -495,6 +498,9 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
      * What lifts the seal, shown under {@link #vaultDenialReason()} on the seal panel.
      */
     private Component vaultSealHint() {
+        if (this.menu.isUnattuned()) {
+            return Component.translatable("gui.soulsvault.sealed.hint.attune");
+        }
         if (this.menu.isCombatLocked()) {
             return Component.translatable("gui.soulsvault.sealed.hint.combat");
         }
