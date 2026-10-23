@@ -1,6 +1,8 @@
 package com.soulsvault.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import com.soulsvault.client.party.ClientPartyCache;
+import com.soulsvault.config.SoulsVaultClientConfig;
 import com.soulsvault.network.PacketC2SOpenVault;
 import com.soulsvault.platform.Services;
 import net.minecraft.client.KeyMapping;
@@ -38,10 +40,19 @@ public final class SoulsVaultKeyMappings {
             "key.soulsvault.open_casket", InputConstants.Type.KEYSYM, InputConstants.UNKNOWN.getValue(), CATEGORY
     );
 
+    /** Opens the party GUI (unbound by default). */
+    public static final KeyMapping OPEN_PARTY = new KeyMapping(
+            "key.soulsvault.open_party", InputConstants.Type.KEYSYM, InputConstants.UNKNOWN.getValue(), CATEGORY
+    );
+    /** Shows / hides the party HUD frames (unbound by default; also in the party GUI). */
+    public static final KeyMapping TOGGLE_PARTY_HUD = new KeyMapping(
+            "key.soulsvault.toggle_party_hud", InputConstants.Type.KEYSYM, InputConstants.UNKNOWN.getValue(), CATEGORY
+    );
+
     /** Mappings that only act while the Casket screen is open (GUI conflict context). */
     public static final List<KeyMapping> SCREEN_KEYS = List.of(INSPECT, CRAFTING, BUILD_ECHOES);
     /** Mappings that only act while in-world with no screen open (in-game conflict context). */
-    public static final List<KeyMapping> WORLD_KEYS = List.of(OPEN_CASKET);
+    public static final List<KeyMapping> WORLD_KEYS = List.of(OPEN_CASKET, OPEN_PARTY, TOGGLE_PARTY_HUD);
 
     private static KeyMatcher keyMatcher = KeyMapping::matches;
     private static MouseMatcher mouseMatcher = KeyMapping::matchesMouse;
@@ -85,6 +96,14 @@ public final class SoulsVaultKeyMappings {
             if (mc.player != null && mc.screen == null && !mc.player.isSpectator()) {
                 Services.PLATFORM.sendToServer(PacketC2SOpenVault.openFromKeybind());
             }
+        }
+        while (OPEN_PARTY.consumeClick()) {
+            if (mc.player != null && mc.screen == null) {
+                ClientPartyCache.openScreen(null, false);
+            }
+        }
+        while (TOGGLE_PARTY_HUD.consumeClick()) {
+            SoulsVaultClientConfig.togglePartyHud();
         }
     }
 

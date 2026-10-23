@@ -1,11 +1,14 @@
 package com.soulsvault.client.hud;
 
 import com.soulsvault.client.ClientVaultCache;
+import com.soulsvault.config.SoulsVaultClientConfig;
 import com.soulsvault.core.ItemKey;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 
@@ -18,7 +21,6 @@ import java.util.List;
  * when world pickups overflow into the Casket or pinned items replenish on Rest.
  */
 public final class SoulsOverflowToastOverlay {
-    private static final long DISPLAY_DURATION_MS = 3200L;
     private static final long FADE_IN_MS = 220L;
     private static final long FADE_OUT_MS = 550L;
     private static final int MAX_VISIBLE_TOASTS = 4;
@@ -39,9 +41,17 @@ public final class SoulsOverflowToastOverlay {
         ClientVaultCache.registerToastListener(SoulsOverflowToastOverlay::onToastEvent);
     }
 
+    private static long displayDurationMs() {
+        return Math.max(500L, Math.round(SoulsVaultClientConfig.get().toastDurationSeconds() * 1000.0D));
+    }
+
     private static synchronized void onToastEvent(ClientVaultCache.OverflowToastEvent event) {
-        if (event == null || event.displayStack().isEmpty() || event.count() <= 0) {
+        if (event == null || event.displayStack().isEmpty() || event.count() <= 0 || !SoulsVaultClientConfig.get().toastsEnabled()) {
             return;
+        }
+        if (SoulsVaultClientConfig.get().toastSound()) {
+            Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(
+                    event.isReplenish() ? SoundEvents.AMETHYST_BLOCK_CHIME : SoundEvents.BUNDLE_INSERT, 1.0F, 0.6F));
         }
         ItemKey key = ItemKey.fromStack(event.displayStack());
         long now = System.currentTimeMillis();
@@ -72,31 +82,41 @@ public final class SoulsOverflowToastOverlay {
 
         Font font = mc.font;
         long now = System.currentTimeMillis();
-        int baseX = screenWidth - BANNER_WIDTH - 8;
-        int baseY = (int) (screenHeight * 0.58F);
+        SoulsVaultClientConfig.ToastPosition position = SoulsVaultClientConfig.get().toastPosition();
+        boolean leftSide = position == SoulsVaultClientConfig.ToastPosition.TOP_LEFT
+                || position == SoulsVaultClientConfig.ToastPosition.BOTTOM_LEFT;
+        boolean top = position == SoulsVaultClientConfig.ToastPosition.TOP_LEFT
+                || position == SoulsVaultClientConfig.ToastPosition.TOP_RIGHT;
+        int baseX = leftSide ? 8 : screenWidth - BANNER_WIDTH - 8;
+        int baseY = switch (position) {
+            case TOP_LEFT, TOP_RIGHT -> 8;
+            case MIDDLE_RIGHT -> (int) (screenHeight * 0.58F);
+            case BOTTOM_LEFT, BOTTOM_RIGHT -> screenHeight - BANNER_HEIGHT - 48;
+        };
+        long durationMs = displayDurationMs();
 
         int index = 0;
         Iterator<ActiveToast> iterator = ACTIVE_TOASTS.iterator();
         while (iterator.hasNext()) {
             ActiveToast toast = iterator.next();
             long elapsed = now - toast.updatedAtMs;
-            if (elapsed >= DISPLAY_DURATION_MS) {
+            if (elapsed >= durationMs) {
                 iterator.remove();
                 continue;
             }
 
-            float alpha = computeAlpha(elapsed);
-            int y = baseY - index * (BANNER_HEIGHT + 4);
+            float alpha = computeAlpha(elapsed, durationMs);
+            int y = top ? baseY + index * (BANNER_HEIGHT + 4) : baseY - index * (BANNER_HEIGHT + 4);
             renderSingleBanner(graphics, font, toast, baseX, y, alpha);
             index++;
         }
     }
 
-    private static float computeAlpha(long elapsedMs) {
+    private static float computeAlpha(long elapsedMs, long durationMs) {
         if (elapsedMs < FADE_IN_MS) {
             return Mth.clamp((float) elapsedMs / (float) FADE_IN_MS, 0.05F, 1.0F);
         }
-        long remaining = DISPLAY_DURATION_MS - elapsedMs;
+        long remaining = durationMs - elapsedMs;
         if (remaining < FADE_OUT_MS) {
             return Mth.clamp((float) remaining / (float) FADE_OUT_MS, 0.05F, 1.0F);
         }
