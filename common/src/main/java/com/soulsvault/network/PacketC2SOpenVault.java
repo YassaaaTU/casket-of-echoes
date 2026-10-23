@@ -4,8 +4,10 @@ import com.soulsvault.Constants;
 import com.soulsvault.config.SoulsVaultConfig;
 import com.soulsvault.platform.Services;
 import com.soulsvault.world.entity.SpectralCasketEntity;
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -32,6 +34,14 @@ public final class PacketC2SOpenVault {
     }
 
     public static PacketC2SOpenVault openFromInventoryKey() {
+        return new PacketC2SOpenVault(null, true);
+    }
+
+    /**
+     * Request sent by the "Open Casket" key mapping: opens at a nearby Rest Point / Spectral Casket,
+     * or anywhere when the server has {@code fullInventoryReplacement} enabled (same rule as the inventory key).
+     */
+    public static PacketC2SOpenVault openFromKeybind() {
         return new PacketC2SOpenVault(null, true);
     }
 
@@ -77,6 +87,10 @@ public final class PacketC2SOpenVault {
         }
 
         if (!atRestPoint && !(this.fromInventoryReplacement && SoulsVaultConfig.isFullInventoryReplacement())) {
+            player.displayClientMessage(
+                    Component.translatable("gui.soulsvault.notice.rest_point_required").withStyle(ChatFormatting.RED),
+                    true
+            );
             return;
         }
 

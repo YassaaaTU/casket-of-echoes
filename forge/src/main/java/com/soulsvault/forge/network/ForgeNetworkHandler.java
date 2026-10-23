@@ -5,10 +5,12 @@ import com.soulsvault.core.BuildEcho;
 import com.soulsvault.core.ItemKey;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.core.VaultEntry;
+import com.soulsvault.network.PacketC2SFillCraftingGrid;
 import com.soulsvault.network.PacketC2SOpenVault;
 import com.soulsvault.network.PacketC2SVaultAction;
 import com.soulsvault.network.PacketS2COverflowToast;
 import com.soulsvault.network.PacketS2CVaultDelta;
+import com.soulsvault.network.PacketS2CSyncConfig;
 import com.soulsvault.network.PacketS2CVaultSyncChunk;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -31,7 +33,7 @@ import java.util.function.Supplier;
  * Implements chunked vault synchronization (max 100 entries/packet) and single-entry delta updates.
  */
 public final class ForgeNetworkHandler {
-    private static final String PROTOCOL_VERSION = "1";
+    private static final String PROTOCOL_VERSION = "2";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(Constants.MOD_ID, "main"),
@@ -96,6 +98,24 @@ public final class ForgeNetworkHandler {
                 ForgeNetworkHandler::handleOverflowToast,
                 Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
+
+        CHANNEL.registerMessage(
+                packetId++,
+                PacketS2CSyncConfig.class,
+                PacketS2CSyncConfig::encode,
+                PacketS2CSyncConfig::decode,
+                ForgeNetworkHandler::handleSyncConfig,
+                Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        );
+
+        CHANNEL.registerMessage(
+                packetId++,
+                PacketC2SFillCraftingGrid.class,
+                PacketC2SFillCraftingGrid::encode,
+                PacketC2SFillCraftingGrid::decode,
+                ForgeNetworkHandler::handleFillCraftingGrid,
+                Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
     }
 
     private static void handleOpenVault(PacketC2SOpenVault msg, Supplier<NetworkEvent.Context> ctxSupplier) {
@@ -110,6 +130,17 @@ public final class ForgeNetworkHandler {
     }
 
     private static void handleVaultAction(PacketC2SVaultAction msg, Supplier<NetworkEvent.Context> ctxSupplier) {
+        NetworkEvent.Context ctx = ctxSupplier.get();
+        ctx.enqueueWork(() -> {
+            ServerPlayer sender = ctx.getSender();
+            if (sender != null) {
+                msg.handleServer(sender);
+            }
+        });
+        ctx.setPacketHandled(true);
+    }
+
+    private static void handleFillCraftingGrid(PacketC2SFillCraftingGrid msg, Supplier<NetworkEvent.Context> ctxSupplier) {
         NetworkEvent.Context ctx = ctxSupplier.get();
         ctx.enqueueWork(() -> {
             ServerPlayer sender = ctx.getSender();
@@ -138,12 +169,32 @@ public final class ForgeNetworkHandler {
         ctx.setPacketHandled(true);
     }
 
+    private static void handleSyncConfig(PacketS2CSyncConfig msg, Supplier<NetworkEvent.Context> ctxSupplier) {
+        NetworkEvent.Context ctx = ctxSupplier.get();
+        ctx.enqueueWork(msg::handleClient);
+        ctx.setPacketHandled(true);
+    }
+
     public static void sendToServer(Object packet) {
         CHANNEL.sendToServer(packet);
     }
 
     public static void sendToClient(ServerPlayer player, Object packet) {
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), packet);
+    }
+
+    /**
+     * Sends the server-authoritative config snapshot to one player (on login).
+     */
+    public static void sendConfigSync(ServerPlayer player) {
+        sendToClient(player, PacketS2CSyncConfig.fromCurrentConfig());
+    }
+
+    /**
+     * Pushes the server-authoritative config snapshot to every connected player (after a config reload).
+     */
+    public static void broadcastConfigSync() {
+        CHANNEL.send(PacketDistributor.ALL.noArg(), PacketS2CSyncConfig.fromCurrentConfig());
     }
 
     public static void syncFullVaultToClient(ServerPlayer player, PlayerVaultData vaultData) {

@@ -1,6 +1,7 @@
 package com.soulsvault.core;
 
 import com.soulsvault.Constants;
+import com.soulsvault.config.SoulsVaultConfig;
 import com.soulsvault.platform.Services;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -33,8 +34,6 @@ import java.util.Set;
 public class PlayerVaultData {
     private static final String NBT_ENTRIES = "Entries";
     private static final String NBT_BUILD_ECHOES = "BuildEchoes";
-    private static final String NBT_MAX_CAPACITY = "MaxStackCapacity";
-    private static final String NBT_OVERFLOW_ON_FULL = "OverflowOnFullInventory";
 
     private static final EquipmentSlot[] ARMOR_SLOTS = {
             EquipmentSlot.HEAD,
@@ -45,8 +44,6 @@ public class PlayerVaultData {
 
     private final Map<ItemKey, VaultEntry> entries = new LinkedHashMap<>();
     private final List<BuildEcho> buildEchoes = new ArrayList<>();
-    private long maxStackCapacity = Constants.DEFAULT_MAX_STACK_CAPACITY;
-    private boolean overflowOnFullInventory = true;
 
     public Collection<VaultEntry> getEntries() {
         return Collections.unmodifiableCollection(this.entries.values());
@@ -79,24 +76,23 @@ public class PlayerVaultData {
         return Collections.unmodifiableList(this.buildEchoes);
     }
 
+    /**
+     * Per-{@link ItemKey} storage cap, driven by the server config ({@code maxStackCapacity}).
+     */
     public long getMaxStackCapacity() {
-        return this.maxStackCapacity;
-    }
-
-    public void setMaxStackCapacity(long maxStackCapacity) {
-        this.maxStackCapacity = Math.max(1L, maxStackCapacity);
-    }
-
-    public boolean isOverflowOnFullInventory() {
-        return this.overflowOnFullInventory;
-    }
-
-    public void setOverflowOnFullInventory(boolean overflowOnFullInventory) {
-        this.overflowOnFullInventory = overflowOnFullInventory;
+        return SoulsVaultConfig.getMaxStackCapacity();
     }
 
     /**
-     * Deposits up to {@code amount} of {@code key} into the vault, respecting {@link #maxStackCapacity}.
+     * Whether full-inventory pickups overflow into the Vault, driven by the server config
+     * ({@code overflowOnFullInventory}).
+     */
+    public boolean isOverflowOnFullInventory() {
+        return SoulsVaultConfig.isOverflowOnFullInventory();
+    }
+
+    /**
+     * Deposits up to {@code amount} of {@code key} into the vault, respecting {@link #getMaxStackCapacity()}.
      *
      * @return the number of items actually accepted into the vault
      */
@@ -106,7 +102,7 @@ public class PlayerVaultData {
         }
         VaultEntry entry = this.entries.get(key);
         long current = entry != null ? entry.getCount() : 0L;
-        long availableSpace = Math.max(0L, this.maxStackCapacity - current);
+        long availableSpace = Math.max(0L, getMaxStackCapacity() - current);
         long accepted = Math.min(amount, availableSpace);
         if (accepted <= 0L) {
             return 0L;
@@ -544,7 +540,7 @@ public class PlayerVaultData {
      *   <li>If the item's {@link VaultEntry} has {@code overflowDeposit == true} and the pickup would exceed
      *       {@code refillTarget}, only tops up the player's inventory to {@code refillTarget} and routes the
      *       remainder directly into the Vault.</li>
-     *   <li>If the player's inventory cannot fit the full stack and {@link #overflowOnFullInventory} is enabled,
+     *   <li>If the player's inventory cannot fit the full stack and {@link #isOverflowOnFullInventory()} is enabled,
      *       inserts what fits into the player's inventory and routes the remainder into the Vault.</li>
      * </ul>
      * Dispatches {@link com.soulsvault.network.PacketS2CVaultDelta} and
@@ -569,7 +565,7 @@ public class PlayerVaultData {
             int carriedCount = countInInventory(inv, key);
             int capRemaining = Math.max(0, entry.getRefillTarget() - carriedCount);
             allowedToInventory = getInsertableCapacity(inv, key, Math.min(stackCount, capRemaining));
-        } else if (this.overflowOnFullInventory) {
+        } else if (isOverflowOnFullInventory()) {
             int fitInInventory = getInsertableCapacity(inv, key, stackCount);
             if (fitInInventory >= stackCount) {
                 // Entire stack fits normally in the player's inventory; let vanilla handle it
@@ -678,9 +674,6 @@ public class PlayerVaultData {
     }
 
     public CompoundTag save(CompoundTag root) {
-        root.putLong(NBT_MAX_CAPACITY, this.maxStackCapacity);
-        root.putBoolean(NBT_OVERFLOW_ON_FULL, this.overflowOnFullInventory);
-
         ListTag entriesTag = new ListTag();
         for (VaultEntry entry : this.entries.values()) {
             if (!entry.getKey().isEmpty() && entry.shouldRetain()) {
@@ -700,18 +693,6 @@ public class PlayerVaultData {
     public void load(CompoundTag root) {
         this.entries.clear();
         this.buildEchoes.clear();
-
-        if (root.contains(NBT_MAX_CAPACITY, Tag.TAG_LONG)) {
-            this.maxStackCapacity = Math.max(1L, root.getLong(NBT_MAX_CAPACITY));
-        } else {
-            this.maxStackCapacity = Constants.DEFAULT_MAX_STACK_CAPACITY;
-        }
-
-        if (root.contains(NBT_OVERFLOW_ON_FULL, Tag.TAG_BYTE)) {
-            this.overflowOnFullInventory = root.getBoolean(NBT_OVERFLOW_ON_FULL);
-        } else {
-            this.overflowOnFullInventory = true;
-        }
 
         if (root.contains(NBT_ENTRIES, Tag.TAG_LIST)) {
             ListTag entriesTag = root.getList(NBT_ENTRIES, Tag.TAG_COMPOUND);

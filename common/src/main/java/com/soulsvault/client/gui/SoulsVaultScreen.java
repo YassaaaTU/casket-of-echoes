@@ -3,11 +3,11 @@ package com.soulsvault.client.gui;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.soulsvault.Constants;
 import com.soulsvault.client.ClientVaultCache;
+import com.soulsvault.client.SoulsVaultKeyMappings;
 import com.soulsvault.client.gui.widget.CategoryTabButton;
 import com.soulsvault.client.gui.widget.GothicButton;
 import com.soulsvault.client.gui.widget.ItemInspectionPane;
 import com.soulsvault.client.gui.widget.VaultItemSlotWidget;
-import com.soulsvault.config.SoulsVaultConfig;
 import com.soulsvault.core.BuildEcho;
 import com.soulsvault.core.ItemKey;
 import com.soulsvault.core.PlayerVaultData;
@@ -19,6 +19,7 @@ import com.soulsvault.platform.Services;
 import com.soulsvault.world.inventory.SoulsVaultMenu;
 import com.soulsvault.world.inventory.SoulsVaultMenu.LeftPaneMode;
 import net.minecraft.ChatFormatting;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -40,6 +41,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Predicate;
 
 /**
  * Dual-pane Souls-like Inventory & Casket of Echoes container screen.
@@ -77,6 +79,12 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
     private static final int COLOR_TEXT_MAIN = 0xFFEAE2D6;
     private static final int COLOR_TEXT_SUB = 0xFFA89E8E;
 
+    /** Crafting "→" arrow area relative to the GUI origin; recipe viewers expose it as a "show crafting recipes" click area. */
+    public static final int CRAFT_ARROW_X = SoulsVaultMenu.CRAFT_GRID_X + 56;
+    public static final int CRAFT_ARROW_Y = SoulsVaultMenu.CRAFT_GRID_Y + 18;
+    public static final int CRAFT_ARROW_WIDTH = 18;
+    public static final int CRAFT_ARROW_HEIGHT = 14;
+
     private static final int VAULT_COLS = 7;
     private static final int VAULT_ROWS = 6;
     private static final int VAULT_SLOT_STEP = 26;
@@ -95,7 +103,6 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
     private EditBox searchBox;
     private GothicButton sortButton;
     private GothicButton inspectToggleButton;
-    private GothicButton invModeConfigButton;
     private GothicButton helpLegendButton;
     @Nullable
     private GothicButton waystonesButton;
@@ -187,10 +194,11 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
         );
         addRenderableWidget(this.sortButton);
 
-        // 3. Header Right Controls: Waystones Button (if loaded), Full-Inventory Config Toggle, Inspect Mode, [?] Help Legend
+        // 3. Header Right Controls: Waystones Button (if loaded), Inspect Mode, [?] Help Legend
+        //    (Full inventory replacement is a server config decision, so there is no in-game toggle.)
         if (Services.PLATFORM.isModLoaded("waystones")) {
             this.waystonesButton = new GothicButton(
-                    this.leftPos + WINDOW_WIDTH - 224,
+                    this.leftPos + WINDOW_WIDTH - 148,
                     this.topPos + 4,
                     48,
                     14,
@@ -199,21 +207,6 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
             );
             addRenderableWidget(this.waystonesButton);
         }
-
-        this.invModeConfigButton = new GothicButton(
-                this.leftPos + WINDOW_WIDTH - 172,
-                this.topPos + 4,
-                72,
-                14,
-                getInvModeConfigLabel(),
-                btn -> {
-                    SoulsVaultConfig.setFullInventoryReplacement(!SoulsVaultConfig.isFullInventoryReplacement());
-                    btn.setMessage(getInvModeConfigLabel());
-                    btn.setHighlighted(SoulsVaultConfig.isFullInventoryReplacement());
-                }
-        );
-        this.invModeConfigButton.setHighlighted(SoulsVaultConfig.isFullInventoryReplacement());
-        addRenderableWidget(this.invModeConfigButton);
 
         this.inspectToggleButton = new GothicButton(
                 this.leftPos + WINDOW_WIDTH - 96,
@@ -385,26 +378,17 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
     }
 
     private Component getInspectButtonLabel() {
-        return Component.translatable(
+        return SoulsVaultKeyMappings.keyHint(SoulsVaultKeyMappings.INSPECT).append(Component.translatable(
                 this.inspectionMode ? "gui.soulsvault.action.grid_toggle" : "gui.soulsvault.action.inspect_toggle"
-        );
+        ));
     }
 
-    private Component getInvModeConfigLabel() {
-        return Component.translatable(
-                SoulsVaultConfig.isFullInventoryReplacement()
-                        ? "gui.soulsvault.config.inv_souls"
-                        : "gui.soulsvault.config.inv_vanilla"
-        );
-    }
-
-    private void setLeftPaneMode(LeftPaneMode mode) {
+    /**
+     * Switches the left pane (client and server). Also used by recipe viewer transfers to reveal the 3x3 grid.
+     */
+    public void setLeftPaneMode(LeftPaneMode mode) {
         this.menu.setLeftPaneMode(mode);
-        sendMenuButton(switch (mode) {
-            case GEAR_CURIOS -> 0;
-            case CRAFTING -> 1;
-            case BUILD_ECHOES -> 2;
-        });
+        sendMenuButton(SoulsVaultMenu.leftPaneButtonId(mode));
         this.refillPopover = null;
         updateLeftPaneSubControls();
     }
@@ -801,7 +785,14 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
                     Component.literal("• Shift + R-Click Vault: ").withStyle(ChatFormatting.GRAY)
                             .append(Component.literal("Auto-Refill & Carry Cap").withStyle(ChatFormatting.AQUA)),
                     Component.literal("• Hotkeys: ").withStyle(ChatFormatting.GRAY)
-                            .append(Component.literal("[R] Inspect  [C] Craft  [B] Echoes").withStyle(ChatFormatting.GOLD))
+                            .append(SoulsVaultKeyMappings.keyHint(SoulsVaultKeyMappings.INSPECT)
+                                    .append("Inspect  ")
+                                    .append(SoulsVaultKeyMappings.keyHint(SoulsVaultKeyMappings.CRAFTING))
+                                    .append("Craft  ")
+                                    .append(SoulsVaultKeyMappings.keyHint(SoulsVaultKeyMappings.BUILD_ECHOES))
+                                    .append("Echoes")
+                                    .withStyle(ChatFormatting.GOLD)),
+                    Component.literal("  (Rebind in Options > Controls > Casket of Echoes)").withStyle(ChatFormatting.DARK_GRAY)
             );
             graphics.renderComponentTooltip(this.font, helpLines, mouseX, mouseY);
             return;
@@ -936,6 +927,11 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
             this.refillPopover = null;
         }
 
+        // Rebindable shortcuts that the player bound to a mouse button (e.g. Inspect on Mouse 4)
+        if (handleShortcut(mapping -> SoulsVaultKeyMappings.matchesMouse(mapping, button))) {
+            return true;
+        }
+
         // 2. Search box focus
         int rightPaneX = this.leftPos + RIGHT_PANE_OFFSET_X;
         int searchY = this.topPos + 22;
@@ -998,6 +994,27 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
             }
         }
         return null;
+    }
+
+    /**
+     * Returns the visible Vault grid widget under the mouse, if any. Vault entries are widgets rather than
+     * container slots, so recipe viewers (JEI / REI / EMI) use this for recipe / usage / bookmark lookups.
+     */
+    @Nullable
+    public VaultItemSlotWidget getVaultSlotAt(double mouseX, double mouseY) {
+        if (this.inspectionMode) {
+            return null;
+        }
+        for (VaultItemSlotWidget slot : this.vaultSlotWidgets) {
+            if (slot.visible && !slot.isEmpty() && slot.isMouseOver(mouseX, mouseY)) {
+                return slot;
+            }
+        }
+        return null;
+    }
+
+    public boolean isCraftingPaneActive() {
+        return this.menu.getLeftPaneMode() == LeftPaneMode.CRAFTING;
     }
 
     private boolean handleBuildEchoesDrawerClick(double mouseX, double mouseY, int button) {
@@ -1130,33 +1147,35 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
             return this.searchBox.keyPressed(keyCode, scanCode, modifiers);
         }
 
-        // 'R' key toggles the Detailed Item Inspection Pane for the hovered or selected item
-        if (keyCode == InputConstants.KEY_R) {
-            updateHoveredSelectionBeforeInspect();
-            toggleInspectionMode();
-            Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
-            return true;
-        }
-
-        // 'C' key toggles the 3x3 Crafting Terminal
-        if (keyCode == InputConstants.KEY_C) {
-            setLeftPaneMode(this.menu.getLeftPaneMode() == LeftPaneMode.CRAFTING
-                    ? LeftPaneMode.GEAR_CURIOS
-                    : LeftPaneMode.CRAFTING);
-            Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
-            return true;
-        }
-
-        // 'B' key toggles the Build Echoes Loadout Drawer
-        if (keyCode == InputConstants.KEY_B) {
-            setLeftPaneMode(this.menu.getLeftPaneMode() == LeftPaneMode.BUILD_ECHOES
-                    ? LeftPaneMode.GEAR_CURIOS
-                    : LeftPaneMode.BUILD_ECHOES);
-            Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
+        if (handleShortcut(mapping -> SoulsVaultKeyMappings.matchesKey(mapping, keyCode, scanCode))) {
             return true;
         }
 
         return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    /**
+     * Runs the screen action bound to the first matching rebindable {@link SoulsVaultKeyMappings} entry
+     * (Inspect, 3x3 Crafting, Build Echoes). Works for both keyboard and mouse bindings.
+     */
+    private boolean handleShortcut(Predicate<KeyMapping> matcher) {
+        if (matcher.test(SoulsVaultKeyMappings.INSPECT)) {
+            // Toggles the Detailed Item Inspection Pane for the hovered or selected item
+            updateHoveredSelectionBeforeInspect();
+            toggleInspectionMode();
+        } else if (matcher.test(SoulsVaultKeyMappings.CRAFTING)) {
+            setLeftPaneMode(this.menu.getLeftPaneMode() == LeftPaneMode.CRAFTING
+                    ? LeftPaneMode.GEAR_CURIOS
+                    : LeftPaneMode.CRAFTING);
+        } else if (matcher.test(SoulsVaultKeyMappings.BUILD_ECHOES)) {
+            setLeftPaneMode(this.menu.getLeftPaneMode() == LeftPaneMode.BUILD_ECHOES
+                    ? LeftPaneMode.GEAR_CURIOS
+                    : LeftPaneMode.BUILD_ECHOES);
+        } else {
+            return false;
+        }
+        Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
+        return true;
     }
 
     private void updateHoveredSelectionBeforeInspect() {

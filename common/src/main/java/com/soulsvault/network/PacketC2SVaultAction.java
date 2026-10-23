@@ -131,10 +131,13 @@ public final class PacketC2SVaultAction {
         if (player == null || player.isSpectator()) {
             return;
         }
-        if (player.containerMenu instanceof SoulsVaultMenu vaultMenu && !vaultMenu.isVaultAccessAllowed()) {
-            if (this.action != ActionType.CLEAR_CRAFTING_GRID) {
-                return;
-            }
+        // Every action originates from the Casket screen; requiring its menu prevents a modified client from
+        // reaching the Vault away from a Rest Point (which would bypass allowRemoteVaultInFullInventory).
+        if (!(player.containerMenu instanceof SoulsVaultMenu vaultMenu)) {
+            return;
+        }
+        if (!vaultMenu.isVaultAccessAllowed() && this.action != ActionType.CLEAR_CRAFTING_GRID) {
+            return;
         }
 
         PlayerVaultData vaultData = Services.PLATFORM.getPlayerVaultData(player);
@@ -197,11 +200,7 @@ public final class PacketC2SVaultAction {
                     }
                 }
             }
-            case CLEAR_CRAFTING_GRID -> {
-                if (player.containerMenu instanceof SoulsVaultMenu vaultMenu) {
-                    vaultMenu.clearCraftingGridToVaultOrInventory(player);
-                }
-            }
+            case CLEAR_CRAFTING_GRID -> vaultMenu.clearCraftingGridToVaultOrInventory(player);
             case DEPOSIT_ALL_CATEGORY -> {
                 VaultCategory[] categories = VaultCategory.values();
                 if (this.extraData >= 0 && this.extraData < categories.length) {

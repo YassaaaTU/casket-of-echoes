@@ -221,6 +221,17 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
         return this.leftPaneMode;
     }
 
+    /**
+     * Menu button id handled by {@link #clickMenuButton} that switches the left pane to {@code mode}.
+     */
+    public static int leftPaneButtonId(LeftPaneMode mode) {
+        return switch (mode) {
+            case GEAR_CURIOS -> 0;
+            case CRAFTING -> 1;
+            case BUILD_ECHOES -> 2;
+        };
+    }
+
     public void setLeftPaneMode(LeftPaneMode mode) {
         this.leftPaneMode = mode != null ? mode : LeftPaneMode.GEAR_CURIOS;
     }
@@ -343,6 +354,78 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
                 Services.PLATFORM.sendVaultDelta(serverPlayer, key, vaultData.getEntry(key));
             }
         }
+    }
+
+    /**
+     * The 3x3 crafting grid container (read by recipe viewer adapters to count what is already in the grid).
+     */
+    public CraftingContainer getCraftingGrid() {
+        return this.craftSlots;
+    }
+
+    /**
+     * Fills the 3x3 grid for a recipe chosen in a recipe viewer (JEI / REI / EMI), like a storage-terminal
+     * crafting grid: the grid is first swept back, then each ingredient is pulled from the Vault (when access
+     * is allowed) and then from the player's inventory. Does nothing if the server-side plan cannot be filled.
+     */
+    public void fillCraftingGridForRecipe(ServerPlayer serverPlayer, List<List<ItemKey>> slotCandidates, int requestedCrafts) {
+        PlayerVaultData vaultData = isVaultAccessAllowed() ? Services.PLATFORM.getPlayerVaultData(serverPlayer) : null;
+        CraftingGridPlanner.Plan plan = CraftingGridPlanner.plan(
+                CraftingGridPlanner.collectAvailable(serverPlayer, this.craftSlots, vaultData),
+                slotCandidates,
+                requestedCrafts
+        );
+        if (!plan.canFill()) {
+            return;
+        }
+
+        setLeftPaneMode(LeftPaneMode.CRAFTING);
+        clearCraftingGridToVaultOrInventory(serverPlayer);
+
+        Set<ItemKey> modifiedVaultKeys = new LinkedHashSet<>();
+        for (int slot = 0; slot < CraftingGridPlanner.GRID_SIZE; slot++) {
+            ItemKey key = plan.chosen()[slot];
+            if (key.isEmpty()) {
+                continue;
+            }
+            int needed = plan.craftCount();
+            int taken = 0;
+            if (vaultData != null) {
+                taken = (int) vaultData.withdraw(key, needed);
+                if (taken > 0) {
+                    modifiedVaultKeys.add(key);
+                }
+            }
+            if (taken < needed) {
+                taken += takeFromInventory(serverPlayer.getInventory(), key, needed - taken);
+            }
+            if (taken > 0) {
+                this.craftSlots.setItem(slot, key.toStack(taken));
+            }
+        }
+
+        if (!modifiedVaultKeys.isEmpty()) {
+            Services.PLATFORM.markVaultDirty(serverPlayer);
+            for (ItemKey key : modifiedVaultKeys) {
+                Services.PLATFORM.sendVaultDelta(serverPlayer, key, vaultData.getEntry(key));
+            }
+        }
+        PlayerVaultData.syncPlayerInventory(serverPlayer);
+        this.slotsChanged(this.craftSlots);
+        this.broadcastChanges();
+    }
+
+    private static int takeFromInventory(Inventory inventory, ItemKey key, int amount) {
+        int taken = 0;
+        for (int i = 0; i < inventory.items.size() && taken < amount; i++) {
+            ItemStack stack = inventory.items.get(i);
+            if (!stack.isEmpty() && key.matches(stack)) {
+                int take = Math.min(amount - taken, stack.getCount());
+                stack.shrink(take);
+                taken += take;
+            }
+        }
+        return taken;
     }
 
     @Override

@@ -5,6 +5,7 @@ import com.mojang.blaze3d.platform.Lighting;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import com.soulsvault.client.ClientVaultCache;
+import com.soulsvault.client.SoulsVaultKeyMappings;
 import com.soulsvault.core.ItemKey;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.core.VaultCategory;
@@ -12,6 +13,7 @@ import com.soulsvault.core.VaultEntry;
 import com.soulsvault.network.PacketC2SVaultAction;
 import com.soulsvault.platform.Services;
 import net.minecraft.ChatFormatting;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -239,8 +241,12 @@ public final class ItemInspectionPane {
         VaultItemSlotWidget.drawBorder(graphics, this.x, this.y, this.width, this.height, COLOR_BRONZE);
 
         if (this.inspectedKey.isEmpty()) {
+            KeyMapping inspectKey = SoulsVaultKeyMappings.INSPECT;
+            Component keyName = inspectKey.isUnbound()
+                    ? Component.translatable("gui.soulsvault.action.inspect_toggle")
+                    : Component.literal("[").append(inspectKey.getTranslatedKeyMessage()).append("]");
             List<FormattedCharSequence> emptyLines = font.split(
-                    Component.translatable("gui.soulsvault.inspect.empty"),
+                    Component.translatable("gui.soulsvault.inspect.empty", keyName),
                     this.width - 20
             );
             int startY = this.y + (this.height - emptyLines.size() * font.lineHeight) / 2;

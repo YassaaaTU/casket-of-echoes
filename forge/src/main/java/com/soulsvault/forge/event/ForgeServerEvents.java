@@ -3,6 +3,7 @@ package com.soulsvault.forge.event;
 import com.soulsvault.Constants;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.forge.data.ForgeVaultSavedData;
+import com.soulsvault.forge.network.ForgeNetworkHandler;
 import com.soulsvault.world.block.BottomlessCasketBlock;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerPlayer;
@@ -17,6 +18,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.player.EntityItemPickupEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.entity.player.PlayerWakeUpEvent;
 
@@ -32,6 +34,16 @@ public final class ForgeServerEvents {
         MinecraftForge.EVENT_BUS.addListener(ForgeServerEvents::onRightClickBlock);
         MinecraftForge.EVENT_BUS.addListener(ForgeServerEvents::onEntityItemPickup);
         MinecraftForge.EVENT_BUS.addListener(ForgeServerEvents::onPlayerWakeUp);
+        MinecraftForge.EVENT_BUS.addListener(ForgeServerEvents::onPlayerLoggedIn);
+    }
+
+    /**
+     * Sends the server-authoritative config (e.g. {@code fullInventoryReplacement}) to the joining client.
+     */
+    private static void onPlayerLoggedIn(final PlayerEvent.PlayerLoggedInEvent event) {
+        if (event.getEntity() instanceof ServerPlayer serverPlayer) {
+            ForgeNetworkHandler.sendConfigSync(serverPlayer);
+        }
     }
 
     /**

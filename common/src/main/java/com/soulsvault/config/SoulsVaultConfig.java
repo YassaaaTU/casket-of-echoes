@@ -3,17 +3,18 @@ package com.soulsvault.config;
 import com.soulsvault.Constants;
 
 /**
- * Platform-independent runtime configuration state for Casket of Echoes.
- * Backed by ForgeConfigSpec on Forge ({@code config/soulsvault-common.toml})
- * and toggleable in-game.
+ * Platform-independent, server-authoritative gameplay configuration for Casket of Echoes.
+ * <p>
+ * Backed by a server config on Forge ({@code <world>/serverconfig/soulsvault-server.toml}, with modpack
+ * defaults shipped in {@code defaultconfigs/soulsvault-server.toml}) and synced to every client so both
+ * sides always agree. These values are intentionally read-only in game: the modpack / server decides them,
+ * and they can be edited through config GUI mods (Configured, Config Menus for Forge) or the file itself.
  */
 public final class SoulsVaultConfig {
     private static volatile boolean fullInventoryReplacement = true;
     private static volatile boolean allowRemoteVaultInFullInventory = true;
     private static volatile boolean overflowOnFullInventory = true;
     private static volatile long maxStackCapacity = Constants.DEFAULT_MAX_STACK_CAPACITY;
-    private static volatile Runnable saveHook = () -> {
-    };
 
     private SoulsVaultConfig() {
     }
@@ -28,11 +29,6 @@ public final class SoulsVaultConfig {
         return fullInventoryReplacement;
     }
 
-    public static void setFullInventoryReplacement(boolean enabled) {
-        fullInventoryReplacement = enabled;
-        saveHook.run();
-    }
-
     /**
      * When {@code true} and {@link #isFullInventoryReplacement()} is enabled, the player can
      * deposit and withdraw items from their Vault anywhere (not only at Rest Points).
@@ -41,42 +37,33 @@ public final class SoulsVaultConfig {
         return allowRemoteVaultInFullInventory;
     }
 
-    public static void setAllowRemoteVaultInFullInventory(boolean allowed) {
-        allowRemoteVaultInFullInventory = allowed;
-        saveHook.run();
-    }
-
+    /**
+     * When {@code true}, world pickups that do not fit in a full inventory are routed into the Vault.
+     */
     public static boolean isOverflowOnFullInventory() {
         return overflowOnFullInventory;
     }
 
-    public static void setOverflowOnFullInventory(boolean enabled) {
-        overflowOnFullInventory = enabled;
-        saveHook.run();
-    }
-
+    /**
+     * Maximum count stored per unique {@link com.soulsvault.core.ItemKey} inside a Vault.
+     */
     public static long getMaxStackCapacity() {
         return maxStackCapacity;
     }
 
-    public static void setMaxStackCapacity(long capacity) {
-        maxStackCapacity = Math.max(1L, capacity);
-        saveHook.run();
-    }
-
+    /**
+     * Applies values from the loader's config backend (on load / reload) or from the server's
+     * config sync packet (on clients).
+     */
     public static void bindValues(
             boolean fullInvReplacement,
             boolean remoteVaultInFullInv,
             boolean overflowOnFull,
-            long maxCapacity,
-            Runnable onSave
+            long maxCapacity
     ) {
         fullInventoryReplacement = fullInvReplacement;
         allowRemoteVaultInFullInventory = remoteVaultInFullInv;
         overflowOnFullInventory = overflowOnFull;
         maxStackCapacity = Math.max(1L, maxCapacity);
-        if (onSave != null) {
-            saveHook = onSave;
-        }
     }
 }

@@ -36,3 +36,25 @@ mandatory=false
 versionRange="[20.0,)"
 ordering="AFTER"
 side="BOTH"
+
+# Recipe viewers: optional, client-side integrations (crafting grid transfer from the Vault, Vault entry lookups)
+[[dependencies.${mod_id}]]
+modId="jei"
+mandatory=false
+versionRange="*"
+ordering="NONE"
+side="CLIENT"
+
+[[dependencies.${mod_id}]]
+modId="emi"
+mandatory=false
+versionRange="*"
+ordering="NONE"
+side="CLIENT"
+
+[[dependencies.${mod_id}]]
+modId="roughlyenoughitems"
+mandatory=false
+versionRange="*"
+ordering="NONE"
+side="CLIENT"

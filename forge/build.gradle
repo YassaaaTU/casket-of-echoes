@@ -45,11 +45,60 @@ configurations {
     }
 }
 
+repositories {
+    maven {
+        name = 'TerraformersMC (EMI)'
+        url = 'https://maven.terraformersmc.com/releases/'
+        content {
+            includeGroup 'dev.emi'
+        }
+    }
+    maven {
+        name = 'Shedaniel (REI / Cloth Config)'
+        url = 'https://maven.shedaniel.me/'
+        content {
+            includeGroup 'me.shedaniel'
+            includeGroup 'me.shedaniel.cloth'
+        }
+    }
+    maven {
+        name = 'Architectury'
+        url = 'https://maven.architectury.dev/'
+        content {
+            includeGroup 'dev.architectury'
+        }
+    }
+}
+
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
     compileOnly project(':common')
     commonJava project(path: ':common', configuration: 'commonJava')
     commonResources project(path: ':common', configuration: 'commonResources')
+
+    // Recipe viewer soft dependencies (forge/.../compat/jei|emi|rei). Only the APIs are compiled against;
+    // each plugin class is discovered by its viewer, so nothing loads when the viewer is absent.
+    compileOnly fg.deobf("mezz.jei:jei-${minecraft_version}-common-api:${jei_version}")
+    compileOnly fg.deobf("mezz.jei:jei-${minecraft_version}-forge-api:${jei_version}")
+    compileOnly fg.deobf("dev.emi:emi-forge:${emi_version}:api")
+    compileOnly(fg.deobf("me.shedaniel:RoughlyEnoughItems-api-forge:${rei_version}")) { transitive = false }
+    compileOnly(fg.deobf("me.shedaniel:RoughlyEnoughItems-default-plugin-forge:${rei_version}")) { transitive = false }
+    compileOnly(fg.deobf("dev.architectury:architectury-forge:${architectury_version}")) { transitive = false }
+    compileOnly(fg.deobf("me.shedaniel.cloth:cloth-config-forge:${cloth_config_version}")) { transitive = false }
+
+    switch (project.findProperty('dev_recipe_viewer')) {
+        case 'jei':
+            runtimeOnly fg.deobf("mezz.jei:jei-${minecraft_version}-forge:${jei_version}")
+            break
+        case 'emi':
+            runtimeOnly fg.deobf("dev.emi:emi-forge:${emi_version}")
+            break
+        case 'rei':
+            runtimeOnly fg.deobf("me.shedaniel:RoughlyEnoughItems-forge:${rei_version}")
+            runtimeOnly fg.deobf("dev.architectury:architectury-forge:${architectury_version}")
+            runtimeOnly fg.deobf("me.shedaniel.cloth:cloth-config-forge:${cloth_config_version}")
+            break
+    }
 }
 
 tasks.named('compileJava', JavaCompile) {
