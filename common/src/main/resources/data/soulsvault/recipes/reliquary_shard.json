@@ -1,0 +1,23 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " E ",
+    "GCG",
+    " E "
+  ],
+  "key": {
+    "E": {
+      "item": "minecraft:echo_shard"
+    },
+    "G": {
+      "item": "minecraft:gold_ingot"
+    },
+    "C": {
+      "item": "soulsvault:bottomless_casket"
+    }
+  },
+  "result": {
+    "item": "soulsvault:reliquary_shard"
+  }
+}

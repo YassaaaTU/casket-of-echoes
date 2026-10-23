@@ -4,6 +4,7 @@ import com.soulsvault.Constants;
 import com.soulsvault.world.block.BottomlessCasketBlock;
 import com.soulsvault.world.entity.SpectralCasketEntity;
 import com.soulsvault.world.inventory.SoulsVaultMenu;
+import com.soulsvault.world.item.CasketUpgradeItem;
 import com.soulsvault.world.item.VestigeMothItem;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
@@ -53,6 +54,16 @@ public final class ForgeModBlocks {
             VestigeMothItem::new
     );
 
+    public static final RegistryObject<CasketUpgradeItem> RELIQUARY_SHARD = ITEMS.register(
+            "reliquary_shard",
+            () -> new CasketUpgradeItem(CasketUpgradeItem.Kind.RELIQUARY_SHARD)
+    );
+
+    public static final RegistryObject<CasketUpgradeItem> ECHO_POUCH = ITEMS.register(
+            "echo_pouch",
+            () -> new CasketUpgradeItem(CasketUpgradeItem.Kind.ECHO_POUCH)
+    );
+
     public static final RegistryObject<EntityType<SpectralCasketEntity>> SPECTRAL_CASKET = ENTITY_TYPES.register(
             "spectral_casket",
             () -> EntityType.Builder.<SpectralCasketEntity>of(SpectralCasketEntity::new, MobCategory.MISC)
@@ -80,6 +91,8 @@ public final class ForgeModBlocks {
             event.accept(VESTIGE_MOTH);
         } else if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
             event.accept(VESTIGE_MOTH);
+            event.accept(RELIQUARY_SHARD);
+            event.accept(ECHO_POUCH);
         }
     }
 }
