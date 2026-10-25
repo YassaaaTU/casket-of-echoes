@@ -1,0 +1,22 @@
+{
+  "parent": "soulsvault:keepsakes_unlocked",
+  "display": {
+    "icon": {
+      "item": "soulsvault:keepsake_coffer"
+    },
+    "title": {
+      "translate": "advancements.soulsvault.keepsakes_upgraded.title"
+    },
+    "description": {
+      "translate": "advancements.soulsvault.keepsakes_upgraded.description"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": false
+  },
+  "criteria": {
+    "granted": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

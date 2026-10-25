@@ -1,6 +1,8 @@
 package com.soulsvault.network;
 
 import com.soulsvault.core.ItemKey;
+import com.soulsvault.core.KeepsakeSync;
+import com.soulsvault.core.Keepsakes;
 import com.soulsvault.core.Milestones;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.core.VaultAccess;
@@ -39,7 +41,10 @@ public final class PacketC2SVaultAction {
         SAVE_BUILD_ECHO,
         LOAD_BUILD_ECHO,
         UNLOCK_REMOTE,
-        SORT_INVENTORY
+        SORT_INVENTORY,
+        KEEPSAKE_DEPOSIT_CARRIED,
+        KEEPSAKE_PICKUP,
+        KEEPSAKE_WITHDRAW
     }
 
     private final ActionType action;
@@ -110,6 +115,18 @@ public final class PacketC2SVaultAction {
 
     public static PacketC2SVaultAction sortInventory() {
         return new PacketC2SVaultAction(ActionType.SORT_INVENTORY, ItemKey.EMPTY, 0L, 0);
+    }
+
+    public static PacketC2SVaultAction keepsakeDepositCarried(boolean singleItemOnly) {
+        return new PacketC2SVaultAction(ActionType.KEEPSAKE_DEPOSIT_CARRIED, ItemKey.EMPTY, 0L, singleItemOnly ? 1 : 0);
+    }
+
+    public static PacketC2SVaultAction keepsakePickup(ItemKey key, int amount) {
+        return new PacketC2SVaultAction(ActionType.KEEPSAKE_PICKUP, key, Math.max(1, amount), 0);
+    }
+
+    public static PacketC2SVaultAction keepsakeWithdraw(ItemKey key, int amount) {
+        return new PacketC2SVaultAction(ActionType.KEEPSAKE_WITHDRAW, key, Math.max(1, amount), 0);
     }
 
     public ActionType getAction() {
@@ -272,6 +289,7 @@ public final class PacketC2SVaultAction {
                 }
             }
             case REST_REPLENISH -> vaultData.performRestAndReplenish(player);
+            case KEEPSAKE_DEPOSIT_CARRIED, KEEPSAKE_PICKUP, KEEPSAKE_WITHDRAW -> handleKeepsake(player, vaultData.getKeepsakes());
             case LOAD_BUILD_ECHO -> {
                 VaultSync.commit(player, vaultData.loadBuildEcho(player, this.extraData));
                 Milestones.award(player, Milestones.ECHO_SWAPPED);
@@ -279,6 +297,66 @@ public final class PacketC2SVaultAction {
             default -> {
             }
         }
+    }
+
+    /**
+     * Keepsakes actions; the Vault's access rules were already checked by the caller.
+     */
+    private void handleKeepsake(ServerPlayer player, Keepsakes keepsakes) {
+        if (!keepsakes.isUnlocked()) {
+            player.displayClientMessage(Component.translatable("gui.soulsvault.keepsakes.locked").withStyle(ChatFormatting.RED), true);
+            return;
+        }
+        ItemStack carried = player.containerMenu.getCarried();
+        switch (this.action) {
+            case KEEPSAKE_DEPOSIT_CARRIED -> {
+                if (carried.isEmpty()) {
+                    return;
+                }
+                ItemKey carriedKey = ItemKey.fromStack(carried);
+                long accepted = keepsakes.deposit(carriedKey, this.extraData == 1 ? 1 : carried.getCount());
+                if (accepted <= 0L) {
+                    Component reason = VaultRules.getRejectionReason(carriedKey);
+                    player.displayClientMessage((reason != null ? reason : Component.translatable("gui.soulsvault.keepsakes.full"))
+                            .copy().withStyle(ChatFormatting.RED), true);
+                    return;
+                }
+                carried.shrink((int) accepted);
+                player.containerMenu.setCarried(carried.isEmpty() ? ItemStack.EMPTY : carried);
+                player.containerMenu.broadcastChanges();
+            }
+            case KEEPSAKE_PICKUP -> {
+                if (this.key.isEmpty() || (!carried.isEmpty() && !this.key.matches(carried))) {
+                    return;
+                }
+                int maxStack = Math.max(1, this.key.getItem().getMaxStackSize());
+                int space = maxStack - carried.getCount();
+                long withdrawn = keepsakes.withdraw(this.key, Math.min(space, Math.max(1L, this.amount)));
+                if (withdrawn <= 0L) {
+                    return;
+                }
+                if (carried.isEmpty()) {
+                    player.containerMenu.setCarried(this.key.toStack((int) withdrawn));
+                } else {
+                    carried.grow((int) withdrawn);
+                    player.containerMenu.setCarried(carried);
+                }
+                player.containerMenu.broadcastChanges();
+            }
+            case KEEPSAKE_WITHDRAW -> {
+                int wanted = (int) Math.min(Integer.MAX_VALUE, Math.min(keepsakes.getCount(this.key), this.amount));
+                int inserted = PlayerVaultData.insertIntoInventory(player.getInventory(), this.key, wanted);
+                if (inserted <= 0) {
+                    return;
+                }
+                keepsakes.withdraw(this.key, inserted);
+                PlayerVaultData.syncPlayerInventory(player);
+            }
+            default -> {
+                return;
+            }
+        }
+        KeepsakeSync.send(player);
     }
 
     private static void reportRejected(ServerPlayer player, ItemKey key) {

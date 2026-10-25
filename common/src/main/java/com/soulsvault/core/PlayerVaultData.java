@@ -44,6 +44,7 @@ public class PlayerVaultData {
     private static final String NBT_BUILD_ECHOES = "BuildEchoes";
     private static final String NBT_ECHO_UPGRADES = "EchoSlotUpgrades";
     private static final String NBT_ATTUNED = "Attuned";
+    private static final String NBT_KEEPSAKES = "Keepsakes";
 
     private static final EquipmentSlot[] ARMOR_SLOTS = {
             EquipmentSlot.HEAD,
@@ -60,6 +61,7 @@ public class PlayerVaultData {
     private final List<BuildEcho> buildEchoes = new ArrayList<>();
     private int echoSlotUpgrades;
     private boolean attuned;
+    private final Keepsakes keepsakes = new Keepsakes();
     private Runnable dirtyListener = () -> {
     };
     @Nullable
@@ -82,6 +84,14 @@ public class PlayerVaultData {
         this.dirtyListener = listener != null ? listener : () -> {
         };
         this.privateStorage.setDirtyListener(this.dirtyListener);
+        this.keepsakes.setDirtyListener(this.dirtyListener);
+    }
+
+    /**
+     * The player's private Keepsakes; never part of a party's shared Casket.
+     */
+    public Keepsakes getKeepsakes() {
+        return this.keepsakes;
     }
 
     private void markDirty() {
@@ -962,6 +972,7 @@ public class PlayerVaultData {
         root.put(NBT_BUILD_ECHOES, echoesTag);
         root.putInt(NBT_ECHO_UPGRADES, this.echoSlotUpgrades);
         root.putBoolean(NBT_ATTUNED, this.attuned);
+        root.put(NBT_KEEPSAKES, this.keepsakes.save(new CompoundTag()));
         return root;
     }
 
@@ -1005,6 +1016,7 @@ public class PlayerVaultData {
         this.echoSlotUpgrades = Math.max(0, root.getInt(NBT_ECHO_UPGRADES));
         // Caskets saved before attunement existed belong to players who were already using them
         this.attuned = !root.contains(NBT_ATTUNED, Tag.TAG_BYTE) || root.getBoolean(NBT_ATTUNED);
+        this.keepsakes.load(root.getCompound(NBT_KEEPSAKES));
     }
 
     public record RestReplenishResult(

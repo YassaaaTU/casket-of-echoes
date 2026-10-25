@@ -3,6 +3,7 @@ package com.soulsvault.client;
 import com.soulsvault.core.BuildEcho;
 import com.soulsvault.core.EquipLoad;
 import com.soulsvault.core.ItemKey;
+import com.soulsvault.core.Keepsakes;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.core.VaultEntry;
 import com.soulsvault.core.VaultMeta;
@@ -18,6 +19,8 @@ import java.util.function.Consumer;
  */
 public final class ClientVaultCache {
     private static final PlayerVaultData CLIENT_VAULT = new PlayerVaultData();
+    private static final Keepsakes CLIENT_KEEPSAKES = new Keepsakes();
+    private static final List<Runnable> KEEPSAKE_LISTENERS = new CopyOnWriteArrayList<>();
     private static final List<ChangeListener> CHANGE_LISTENERS = new CopyOnWriteArrayList<>();
     private static final List<Consumer<OverflowToastEvent>> TOAST_LISTENERS = new CopyOnWriteArrayList<>();
 
@@ -95,6 +98,27 @@ public final class ClientVaultCache {
         VaultEntry current = CLIENT_VAULT.getEntry(key);
         for (ChangeListener listener : CHANGE_LISTENERS) {
             listener.onDelta(key, current);
+        }
+    }
+
+    public static Keepsakes getKeepsakes() {
+        return CLIENT_KEEPSAKES;
+    }
+
+    public static void registerKeepsakeListener(Runnable listener) {
+        if (listener != null) {
+            KEEPSAKE_LISTENERS.add(listener);
+        }
+    }
+
+    public static void unregisterKeepsakeListener(Runnable listener) {
+        KEEPSAKE_LISTENERS.remove(listener);
+    }
+
+    public static void handleKeepsakes(boolean unlocked, boolean upgraded, List<VaultEntry> entries) {
+        CLIENT_KEEPSAKES.setFromSync(unlocked, upgraded, entries);
+        for (Runnable listener : KEEPSAKE_LISTENERS) {
+            listener.run();
         }
     }
 

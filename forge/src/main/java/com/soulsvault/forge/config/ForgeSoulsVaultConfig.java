@@ -88,6 +88,10 @@ public final class ForgeSoulsVaultConfig {
     private static final ForgeConfigSpec.BooleanValue PARTY_ALLOW_OVERRIDE;
     private static final ForgeConfigSpec.BooleanValue PARTY_RETURN_ON_LEAVE;
     private static final ForgeConfigSpec.IntValue PARTY_UPGRADE_CREDIT_MINUTES;
+    private static final ForgeConfigSpec.BooleanValue KEEPSAKES_REQUIRE_UNLOCK;
+    private static final ForgeConfigSpec.IntValue KEEPSAKES_SLOTS;
+    private static final ForgeConfigSpec.IntValue KEEPSAKES_BASE_STACKS;
+    private static final ForgeConfigSpec.IntValue KEEPSAKES_UPGRADED_STACKS;
 
     // client
     private static final ForgeConfigSpec.BooleanValue TOASTS_ENABLED;
@@ -285,6 +289,22 @@ public final class ForgeSoulsVaultConfig {
                 .defineInRange("upgradeCreditMinutes", SoulsVaultConfig.Party.DEFAULT.upgradeCreditMinutes(), 0, 10080);
         b.pop();
 
+        section(b, "keepsakes", "Keepsakes: a small private stash beside the Casket, never shared with a party's Covenant Casket.",
+                "Same access rules as the Vault (attunement, Rest Points or the remote cost, combat lock).");
+        KEEPSAKES_REQUIRE_UNLOCK = b.comment("If true, Keepsakes stay locked until the player uses a Keepsake Coffer.")
+                .translation(key("keepsakes.requireUnlock"))
+                .define("requireUnlock", SoulsVaultConfig.Keepsakes.DEFAULT.requireUnlock());
+        KEEPSAKES_SLOTS = b.comment("Different items Keepsakes hold.")
+                .translation(key("keepsakes.slots"))
+                .defineInRange("slots", SoulsVaultConfig.Keepsakes.DEFAULT.slots(), 1, 42);
+        KEEPSAKES_BASE_STACKS = b.comment("Stacks of each item (2 = 128 of a 64-stack item, 2 of an unstackable one).")
+                .translation(key("keepsakes.baseStacks"))
+                .defineInRange("baseStacks", SoulsVaultConfig.Keepsakes.DEFAULT.baseStacks(), 1, 64);
+        KEEPSAKES_UPGRADED_STACKS = b.comment("Stacks of each item after a second Keepsake Coffer is used.")
+                .translation(key("keepsakes.upgradedStacks"))
+                .defineInRange("upgradedStacks", SoulsVaultConfig.Keepsakes.DEFAULT.upgradedStacks(), 1, 64);
+        b.pop();
+
         SERVER_SPEC = b.build();
 
         ForgeConfigSpec.Builder c = new ForgeConfigSpec.Builder();
@@ -395,7 +415,9 @@ public final class ForgeSoulsVaultConfig {
                 new SoulsVaultConfig.Party(PARTY_PROVIDER.get(), BUILTIN_PARTIES.get(), PARTY_MAX_MEMBERS.get(),
                         PARTY_SHARED_CASKET.get(), PARTY_FRIENDLY_FIRE.get(), PARTY_PROTECT_OWN_PETS.get(), PARTY_SHARE_ADVANCEMENTS.get(),
                         PARTY_SHARE_QUESTS.get(), PARTY_ALLOW_MERGE.get(), PARTY_ALLOW_OVERRIDE.get(),
-                        PARTY_RETURN_ON_LEAVE.get(), PARTY_UPGRADE_CREDIT_MINUTES.get())
+                        PARTY_RETURN_ON_LEAVE.get(), PARTY_UPGRADE_CREDIT_MINUTES.get()),
+                new SoulsVaultConfig.Keepsakes(KEEPSAKES_REQUIRE_UNLOCK.get(), KEEPSAKES_SLOTS.get(), KEEPSAKES_BASE_STACKS.get(),
+                        KEEPSAKES_UPGRADED_STACKS.get())
         );
     }
 

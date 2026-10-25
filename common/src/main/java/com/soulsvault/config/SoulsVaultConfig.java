@@ -140,6 +140,14 @@ public final class SoulsVaultConfig {
         );
     }
 
+    /**
+     * Private Keepsakes: {@code slots} kinds of items, each up to {@code baseStacks} stacks
+     * ({@code upgradedStacks} after a second Keepsake Coffer).
+     */
+    public record Keepsakes(boolean requireUnlock, int slots, int baseStacks, int upgradedStacks) {
+        public static final Keepsakes DEFAULT = new Keepsakes(true, 9, 2, 4);
+    }
+
     /** Full server settings snapshot, swapped atomically on load / reload / sync. */
     public record Settings(
             Inventory inventory,
@@ -151,7 +159,8 @@ public final class SoulsVaultConfig {
             RemoteAccess remoteAccess,
             Upgrades upgrades,
             EquipLoad equipLoad,
-            Party party
+            Party party,
+            Keepsakes keepsakes
     ) {
         public static final Settings DEFAULT = new Settings(
                 Inventory.DEFAULT,
@@ -163,7 +172,8 @@ public final class SoulsVaultConfig {
                 RemoteAccess.DEFAULT,
                 Upgrades.DEFAULT,
                 EquipLoad.DEFAULT,
-                Party.DEFAULT
+                Party.DEFAULT,
+                Keepsakes.DEFAULT
         );
 
         public void encode(FriendlyByteBuf buf) {
@@ -216,6 +226,11 @@ public final class SoulsVaultConfig {
             buf.writeBoolean(this.party.allowCasketOverride());
             buf.writeBoolean(this.party.returnContributionsOnLeave());
             buf.writeVarInt(this.party.upgradeCreditMinutes());
+
+            buf.writeBoolean(this.keepsakes.requireUnlock());
+            buf.writeVarInt(this.keepsakes.slots());
+            buf.writeVarInt(this.keepsakes.baseStacks());
+            buf.writeVarInt(this.keepsakes.upgradedStacks());
         }
 
         public static Settings decode(FriendlyByteBuf buf) {
@@ -242,7 +257,9 @@ public final class SoulsVaultConfig {
                     buf.readBoolean(),
                     buf.readVarInt()
             );
-            return new Settings(inventory, vault, restPoints, echoes, fieldAccess, combat, remoteAccess, upgrades, equipLoad, party);
+            Keepsakes keepsakes = new Keepsakes(buf.readBoolean(), buf.readVarInt(), buf.readVarInt(), buf.readVarInt());
+            return new Settings(inventory, vault, restPoints, echoes, fieldAccess, combat, remoteAccess, upgrades, equipLoad, party,
+                    keepsakes);
         }
     }
 
@@ -301,6 +318,10 @@ public final class SoulsVaultConfig {
 
     public static Party party() {
         return settings.party();
+    }
+
+    public static Keepsakes keepsakes() {
+        return settings.keepsakes();
     }
 
     /**

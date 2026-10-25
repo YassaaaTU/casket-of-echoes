@@ -4,6 +4,8 @@ import com.soulsvault.config.SoulsVaultConfig;
 import com.soulsvault.core.AccessorySlotAccess;
 import com.soulsvault.core.Attunement;
 import com.soulsvault.core.ItemKey;
+import com.soulsvault.core.KeepsakeSync;
+import com.soulsvault.core.Keepsakes;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.core.VaultAccess;
 import com.soulsvault.core.VaultRules;
@@ -95,6 +97,8 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
     private LeftPaneMode leftPaneMode = LeftPaneMode.GEAR_CURIOS;
     private boolean cosmeticMode = false;
     private int accessoryPage = 0;
+    /** The Vault pane shows the player's private Keepsakes; shift-clicks then deposit there. */
+    private boolean keepsakesView = false;
 
     private final List<AccessoryMenuSlot> activeAccessorySlots = new ArrayList<>();
     private final List<AccessoryMenuSlot> cosmeticAccessorySlots = new ArrayList<>();
@@ -380,6 +384,17 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
     /**
      * Menu button id handled by {@link #clickMenuButton} that switches the left pane to {@code mode}.
      */
+    public static final int KEEPSAKES_VIEW_ON = 6;
+    public static final int KEEPSAKES_VIEW_OFF = 7;
+
+    public boolean isKeepsakesView() {
+        return this.keepsakesView;
+    }
+
+    public void setKeepsakesView(boolean keepsakesView) {
+        this.keepsakesView = keepsakesView;
+    }
+
     public static int leftPaneButtonId(LeftPaneMode mode) {
         return switch (mode) {
             case GEAR_CURIOS -> 0;
@@ -591,6 +606,8 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
             case 3 -> setCosmeticMode(!this.cosmeticMode);
             case 4 -> setAccessoryPage(this.accessoryPage - 1);
             case 5 -> setAccessoryPage(this.accessoryPage + 1);
+            case KEEPSAKES_VIEW_ON -> this.keepsakesView = true;
+            case KEEPSAKES_VIEW_OFF -> this.keepsakesView = false;
             default -> {
                 return false;
             }
@@ -643,6 +660,28 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
             if (this.leftPaneMode == LeftPaneMode.GEAR_CURIOS && moveToEquipment(slotStack)) {
                 slot.setChanged();
                 return copy;
+            }
+
+            // Keepsakes view: shift-click files the item into the private Keepsakes (and never into the Vault)
+            if (this.keepsakesView && isVaultAccessAllowed()) {
+                if (!player.level().isClientSide && player instanceof ServerPlayer serverPlayer) {
+                    Keepsakes keepsakes = Services.PLATFORM.getPlayerVaultData(serverPlayer).getKeepsakes();
+                    long accepted = keepsakes.deposit(ItemKey.fromStack(slotStack), slotStack.getCount());
+                    if (accepted > 0L) {
+                        slotStack.shrink((int) accepted);
+                        if (slotStack.isEmpty()) {
+                            slot.set(ItemStack.EMPTY);
+                        } else {
+                            slot.setChanged();
+                        }
+                        PlayerVaultData.syncPlayerInventory(serverPlayer);
+                        KeepsakeSync.send(serverPlayer);
+                        return copy;
+                    }
+                    serverPlayer.displayClientMessage(Component.translatable(keepsakes.isUnlocked()
+                            ? "gui.soulsvault.keepsakes.full" : "gui.soulsvault.keepsakes.locked").withStyle(ChatFormatting.RED), true);
+                }
+                return ItemStack.EMPTY;
             }
 
             // Deposit into Vault when Vault access is active on the server

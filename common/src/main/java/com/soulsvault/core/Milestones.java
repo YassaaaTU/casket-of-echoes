@@ -21,6 +21,8 @@ public final class Milestones {
     public static final String CASKET_EXPANDED = "casket_expanded";
     public static final String ECHO_SLOT_ADDED = "echo_slot_added";
     public static final String COVENANT_JOINED = "covenant_joined";
+    public static final String KEEPSAKES_UNLOCKED = "keepsakes_unlocked";
+    public static final String KEEPSAKES_UPGRADED = "keepsakes_upgraded";
 
     private static final String CRITERION = "granted";
 

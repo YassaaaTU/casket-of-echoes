@@ -3,6 +3,7 @@ package com.soulsvault.forge.network;
 import com.soulsvault.Constants;
 import com.soulsvault.core.BuildEcho;
 import com.soulsvault.core.ItemKey;
+import com.soulsvault.core.KeepsakeSync;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.core.VaultEntry;
 import com.soulsvault.core.VaultMeta;
@@ -12,6 +13,7 @@ import com.soulsvault.network.PacketC2SOpenVault;
 import com.soulsvault.network.PacketC2SPartyAction;
 import com.soulsvault.network.PacketC2SVaultAction;
 import com.soulsvault.network.PacketS2CEquipLoad;
+import com.soulsvault.network.PacketS2CKeepsakes;
 import com.soulsvault.network.PacketS2CPartyEquipment;
 import com.soulsvault.network.PacketS2CPartyPositions;
 import com.soulsvault.network.PacketS2COpenPartyScreen;
@@ -144,6 +146,8 @@ public final class ForgeNetworkHandler {
                 PacketS2CPartyEquipment::handleClient);
         registerClientbound(PacketS2CPartyPositions.class, PacketS2CPartyPositions::encode, PacketS2CPartyPositions::decode,
                 PacketS2CPartyPositions::handleClient);
+        registerClientbound(PacketS2CKeepsakes.class, PacketS2CKeepsakes::encode, PacketS2CKeepsakes::decode,
+                PacketS2CKeepsakes::handleClient);
     }
 
     private static <T> void registerServerbound(
@@ -261,6 +265,7 @@ public final class ForgeNetworkHandler {
         List<BuildEcho> echoes = vaultData.getBuildEchoes();
         String partyName = PartyService.sharedPartyName(player.server, player.getUUID());
         VaultMeta meta = vaultData.createMeta(partyName != null ? partyName : "");
+        KeepsakeSync.send(player);
 
         if (allEntries.isEmpty()) {
             sendToClient(player, new PacketS2CVaultSyncChunk(0, 1, Collections.emptyList(), echoes, meta));

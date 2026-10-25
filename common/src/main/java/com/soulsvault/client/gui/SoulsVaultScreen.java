@@ -17,6 +17,7 @@ import com.soulsvault.config.SoulsVaultConfig;
 import com.soulsvault.core.BuildEcho;
 import com.soulsvault.core.EquipLoad;
 import com.soulsvault.core.ItemKey;
+import com.soulsvault.core.Keepsakes;
 import com.soulsvault.core.VaultCategory;
 import com.soulsvault.core.VaultEntry;
 import com.soulsvault.core.VaultMeta;
@@ -142,6 +143,8 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
 
     private GothicButton cosmeticToggleButton;
     private GothicButton sortInventoryButton;
+    private GothicButton keepsakesButton;
+    private final Runnable keepsakeListener = this::bindVaultWidgets;
     private boolean leftPaneRestored = false;
     private GothicButton prevAccessoryPageButton;
     private GothicButton nextAccessoryPageButton;
@@ -363,10 +366,19 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
                 unlockLabel, btn -> Services.PLATFORM.sendToServer(PacketC2SVaultAction.unlockRemoteAccess()));
         addRenderableWidget(this.remoteUnlockButton);
 
+        Component keepsakesLabel = Component.translatable("gui.soulsvault.keepsakes.button");
+        int keepsakesWidth = Math.max(52, this.font.width(keepsakesLabel) + 10);
+        this.keepsakesButton = new GothicButton(rightPaneX + RIGHT_PANE_WIDTH - 6 - keepsakesWidth, this.topPos + 44, keepsakesWidth, 12,
+                keepsakesLabel, btn -> toggleKeepsakesView());
+        this.keepsakesButton.setTooltip(Tooltip.create(Component.translatable("gui.soulsvault.keepsakes.button.tooltip")));
+        this.keepsakesButton.setHighlighted(this.menu.isKeepsakesView());
+        addRenderableWidget(this.keepsakesButton);
+
         this.inspectionPane = new ItemInspectionPane(rightPaneX, this.topPos + 42, RIGHT_PANE_WIDTH, WINDOW_HEIGHT - 48);
         this.inspectionPane.setInspectedKey(this.selectedItemKey);
 
         ClientVaultCache.registerChangeListener(this.vaultListener);
+        ClientVaultCache.registerKeepsakeListener(this.keepsakeListener);
         updateLeftPaneSubControls();
         updateLockStateControls();
         this.gridView.setSearch(this.searchBox.getValue());
@@ -404,6 +416,7 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
     @Override
     public void removed() {
         ClientVaultCache.unregisterChangeListener(this.vaultListener);
+        ClientVaultCache.unregisterKeepsakeListener(this.keepsakeListener);
         super.removed();
     }
 
@@ -485,10 +498,31 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
      * the seal panel's unlock button.
      */
     private boolean isVaultGridShown() {
-        return !this.inspectionMode && vaultDenialReason() == null;
+        return !this.inspectionMode && vaultDenialReason() == null && !keepsakesLocked();
+    }
+
+    private boolean keepsakesLocked() {
+        return this.menu.isKeepsakesView() && !ClientVaultCache.getKeepsakes().isUnlocked();
+    }
+
+    /**
+     * Switches the Vault pane between the (possibly shared) Vault and the player's private Keepsakes.
+     */
+    private void toggleKeepsakesView() {
+        boolean on = !this.menu.isKeepsakesView();
+        this.menu.setKeepsakesView(on);
+        sendMenuButton(on ? SoulsVaultMenu.KEEPSAKES_VIEW_ON : SoulsVaultMenu.KEEPSAKES_VIEW_OFF);
+        this.keepsakesButton.setHighlighted(on);
+        this.refillPopover = null;
+        this.vaultScrollRow = 0;
+        bindVaultWidgets();
+        applyVaultGridVisibility();
     }
 
     private void applyVaultGridVisibility() {
+        if (this.keepsakesButton != null) {
+            this.keepsakesButton.visible = !this.inspectionMode;
+        }
         boolean shown = isVaultGridShown();
         for (VaultItemSlotWidget vaultSlot : this.vaultSlotWidgets) {
             vaultSlot.visible = shown;
@@ -606,10 +640,11 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
             tabBtn.setEntryCount(counts.getOrDefault(tabBtn.getCategory(), 0));
         }
 
-        List<VaultEntry> view = this.gridView.getView();
+        boolean keepsakes = this.menu.isKeepsakesView();
+        List<VaultEntry> view = keepsakes ? ClientVaultCache.getKeepsakes().getEntries() : this.gridView.getView();
         int totalVaultRows = Math.max(1, (view.size() + VAULT_COLS - 1) / VAULT_COLS);
         int maxVaultScroll = Math.max(0, totalVaultRows - VAULT_ROWS);
-        this.vaultScrollRow = Mth.clamp(this.vaultScrollRow, 0, maxVaultScroll);
+        this.vaultScrollRow = keepsakes ? 0 : Mth.clamp(this.vaultScrollRow, 0, maxVaultScroll);
 
         int startVaultIndex = this.vaultScrollRow * VAULT_COLS;
         for (int i = 0; i < this.vaultSlotWidgets.size(); i++) {
@@ -623,7 +658,7 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
             }
         }
 
-        if (this.selectedItemKey.isEmpty() && !view.isEmpty()) {
+        if (!keepsakes && this.selectedItemKey.isEmpty() && !view.isEmpty()) {
             this.selectedItemKey = view.get(0).getKey();
             if (this.inspectionPane != null) {
                 this.inspectionPane.setInspectedKey(this.selectedItemKey);
@@ -709,18 +744,26 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
         graphics.fill(rightPaneX, paneTopY, rightPaneX + RIGHT_PANE_WIDTH, paneTopY + vaultPaneH, COLOR_PANE_BG);
         VaultItemSlotWidget.drawBorder(graphics, rightPaneX, paneTopY, RIGHT_PANE_WIDTH, vaultPaneH, COLOR_BRONZE_MUTED);
 
-        List<VaultEntry> view = this.gridView.getView();
-        String headerLeft = this.gridView.getCategory().getDisplayName().getString() + " (" + view.size() + ")";
+        boolean keepsakesView = this.menu.isKeepsakesView();
+        Keepsakes keepsakes = ClientVaultCache.getKeepsakes();
+        List<VaultEntry> view = keepsakesView ? keepsakes.getEntries() : this.gridView.getView();
+        String headerLeft = keepsakesView
+                ? Component.translatable("gui.soulsvault.keepsakes.header", keepsakes.usedSlots(), keepsakes.getSlots()).getString()
+                : this.gridView.getCategory().getDisplayName().getString() + " (" + view.size() + ")";
         graphics.drawString(this.font, headerLeft, rightPaneX + 18, paneTopY + 5, COLOR_GOLD, false);
 
         Component denial = vaultDenialReason();
         if (denial != null) {
-            renderSealPanel(graphics, denial);
+            renderSealPanel(graphics, Component.translatable("gui.soulsvault.sealed.title"), denial, vaultSealHint());
+        } else if (keepsakesLocked()) {
+            renderSealPanel(graphics, Component.translatable("gui.soulsvault.keepsakes.locked.title"),
+                    Component.translatable("gui.soulsvault.keepsakes.locked"),
+                    Component.translatable("gui.soulsvault.keepsakes.locked.hint"));
         }
 
         // Vault scrollbar track
         int totalVaultRows = Math.max(1, (view.size() + VAULT_COLS - 1) / VAULT_COLS);
-        if (denial == null && totalVaultRows > VAULT_ROWS) {
+        if (denial == null && !keepsakesView && totalVaultRows > VAULT_ROWS) {
             int trackX = rightPaneX + RIGHT_PANE_WIDTH - 8;
             int trackY = this.topPos + VAULT_GRID_OFFSET_Y;
             int trackH = VAULT_ROWS * VAULT_SLOT_STEP - 2;
@@ -734,7 +777,9 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
         // Footer: capacity, or the private Casket set aside while a shared party Casket is in use
         int footerY = this.topPos + VAULT_GRID_OFFSET_Y + VAULT_ROWS * VAULT_SLOT_STEP + 4;
         Component footer;
-        if (meta.shared() && meta.setAsideItems() > 0L) {
+        if (keepsakesView) {
+            footer = Component.translatable("gui.soulsvault.keepsakes.footer", keepsakes.getStacks());
+        } else if (meta.shared() && meta.setAsideItems() > 0L) {
             footer = Component.translatable("gui.soulsvault.footer.set_aside",
                     VaultItemSlotWidget.formatCompactCount(meta.setAsideItems()));
         } else if (meta.maxUniqueEntries() > 0) {
@@ -751,7 +796,7 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
      * Stands in for the grid while the vault is sealed: a padlock, why it is sealed, what lifts the seal and (for an
      * unpaid remote cost) the unlock button centred underneath.
      */
-    private void renderSealPanel(GuiGraphics graphics, Component reason) {
+    private void renderSealPanel(GuiGraphics graphics, Component title, Component reason, Component hint) {
         int x = this.leftPos + VAULT_GRID_OFFSET_X;
         int y = this.topPos + VAULT_GRID_OFFSET_Y;
         int centerX = x + SEAL_PANEL_WIDTH / 2;
@@ -769,7 +814,6 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
         graphics.fill(centerX - 1, lockY + 11, centerX + 1, lockY + 15, COLOR_GOLD);
 
         int textY = lockY + 27;
-        Component title = Component.translatable("gui.soulsvault.sealed.title");
         graphics.drawString(this.font, title, centerX - this.font.width(title) / 2, textY, COLOR_GOLD, true);
         textY += 14;
         int wrapWidth = SEAL_PANEL_WIDTH - 20;
@@ -778,7 +822,7 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
             textY += 10;
         }
         textY += 2;
-        for (FormattedCharSequence line : this.font.split(vaultSealHint(), wrapWidth)) {
+        for (FormattedCharSequence line : this.font.split(hint, wrapWidth)) {
             if (textY + 9 > this.topPos + SEAL_BUTTON_Y - 2) {
                 break;
             }
@@ -977,7 +1021,10 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
                     VaultEntry entry = slot.getEntry();
                     ItemStack stack = slot.getDisplayStack();
                     List<Component> tooltip = new ArrayList<>(getTooltipFromItem(Minecraft.getInstance(), stack));
-                    if (entry != null) {
+                    if (entry != null && this.menu.isKeepsakesView()) {
+                        tooltip.add(Component.translatable("gui.soulsvault.keepsakes.kept", entry.getCount(),
+                                ClientVaultCache.getKeepsakes().getCapacity(entry.getKey())).withStyle(ChatFormatting.GOLD));
+                    } else if (entry != null) {
                         tooltip.add(Component.translatable("gui.soulsvault.inspect.stored_count", entry.getCount())
                                 .withStyle(ChatFormatting.GOLD));
                         if (entry.isAutoRefill() || entry.isOverflowDeposit()) {
@@ -1314,6 +1361,10 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
     }
 
     private void onVaultWidgetClicked(VaultItemSlotWidget widget, int button) {
+        if (this.menu.isKeepsakesView()) {
+            onKeepsakeWidgetClicked(widget, button);
+            return;
+        }
         // If holding a cursor stack, deposit it into the Vault
         if (!this.menu.getCarried().isEmpty() && (button == 0 || button == 1)) {
             playClick();
@@ -1362,6 +1413,34 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
             Services.PLATFORM.sendToServer(PacketC2SVaultAction.pickupToCursor(key, half));
         }
         bindVaultWidgets();
+    }
+
+    /**
+     * Keepsakes: click with an item to store it (right-click: one), click an entry to take a stack (right-click:
+     * half), Shift + click to send a stack to the inventory.
+     */
+    private void onKeepsakeWidgetClicked(VaultItemSlotWidget widget, int button) {
+        if (button != 0 && button != 1) {
+            return;
+        }
+        playClick();
+        if (!this.menu.getCarried().isEmpty()) {
+            Services.PLATFORM.sendToServer(PacketC2SVaultAction.keepsakeDepositCarried(button == 1));
+            return;
+        }
+        VaultEntry entry = widget.getEntry();
+        if (entry == null || entry.getKey().isEmpty()) {
+            return;
+        }
+        int maxStack = Math.max(1, entry.getKey().getItem().getMaxStackSize());
+        if (button == 0 && hasShiftDown()) {
+            Services.PLATFORM.sendToServer(PacketC2SVaultAction.keepsakeWithdraw(entry.getKey(), maxStack));
+        } else if (button == 0) {
+            Services.PLATFORM.sendToServer(PacketC2SVaultAction.keepsakePickup(entry.getKey(), maxStack));
+        } else {
+            int half = Math.max(1, (int) Math.min(maxStack, entry.getCount()) / 2);
+            Services.PLATFORM.sendToServer(PacketC2SVaultAction.keepsakePickup(entry.getKey(), half));
+        }
     }
 
     @Override
