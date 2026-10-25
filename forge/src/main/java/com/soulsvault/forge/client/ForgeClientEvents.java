@@ -57,7 +57,7 @@ public final class ForgeClientEvents {
     private static void onRenderLevelStage(final RenderLevelStageEvent event) {
         if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_LEVEL) {
             PartyMarkers.capture(event.getPoseStack().last().pose(), event.getProjectionMatrix(),
-                    event.getCamera().getPosition(), event.getPartialTick());
+                    event.getCamera(), event.getPartialTick());
         }
     }
 

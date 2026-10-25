@@ -42,6 +42,15 @@ public final class SoulsVaultClientConfig {
         FACE
     }
 
+    /** Who draws teammates in the world. */
+    public enum MarkerMode {
+        /** Casket markers, unless Xaero's Minimap already draws tracked teammates in the world (no double icons). */
+        AUTO,
+        /** Casket markers even when Xaero's Minimap draws its own. */
+        ON,
+        OFF
+    }
+
     /** Whether party frames show the hunger bar. */
     public enum HungerDisplay {
         /** Hidden when a mod that removes hunger (HungerStrike) is installed. */
@@ -67,7 +76,7 @@ public final class SoulsVaultClientConfig {
             int partyHudFullRows,
             PortraitMode partyPortrait,
             HungerDisplay partyHunger,
-            boolean partyMarkers,
+            MarkerMode partyMarkers,
             int partyMarkerMinDistance,
             boolean partyOnXaeroMaps
     ) {
@@ -88,8 +97,8 @@ public final class SoulsVaultClientConfig {
                 4,
                 PortraitMode.MODEL,
                 HungerDisplay.AUTO,
-                true,
-                8,
+                MarkerMode.AUTO,
+                10,
                 true
         );
     }
@@ -102,7 +111,7 @@ public final class SoulsVaultClientConfig {
 
         void setPartyHud(boolean visible, PartyHudStyle style, HudAnchor anchor);
 
-        void setPartyVisuals(PortraitMode portrait, boolean markers);
+        void setPartyVisuals(PortraitMode portrait, MarkerMode markers);
     }
 
     private static volatile Settings settings = Settings.DEFAULT;
@@ -160,7 +169,7 @@ public final class SoulsVaultClientConfig {
         }
     }
 
-    public static void setPartyVisuals(PortraitMode portrait, boolean markers) {
+    public static void setPartyVisuals(PortraitMode portrait, MarkerMode markers) {
         Writer current = writer;
         if (current != null) {
             current.setPartyVisuals(portrait, markers);

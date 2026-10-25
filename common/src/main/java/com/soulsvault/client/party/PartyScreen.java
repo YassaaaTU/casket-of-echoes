@@ -18,6 +18,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.PlayerFaceRenderer;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.resources.DefaultPlayerSkin;
@@ -537,13 +538,17 @@ public class PartyScreen extends Screen {
                     SoulsVaultClientConfig.setPartyVisuals(modes[(now.partyPortrait().ordinal() + 1) % modes.length], now.partyMarkers());
                     rebuildWidgets();
                 }));
-        addRenderableWidget(new GothicButton(this.left + 124, visualsY, 110, 14,
-                Component.translatable(client.partyMarkers() ? "gui.soulsvault.party.hud.markers.on" : "gui.soulsvault.party.hud.markers.off"),
+        String markerMode = client.partyMarkers().name().toLowerCase(Locale.ROOT);
+        boolean xaeroDraws = client.partyMarkers() == SoulsVaultClientConfig.MarkerMode.AUTO && !PartyMarkers.active();
+        GothicButton markers = addRenderableWidget(new GothicButton(this.left + 124, visualsY, 110, 14,
+                Component.translatable(xaeroDraws ? "gui.soulsvault.party.hud.markers.auto_xaero" : "gui.soulsvault.party.hud.markers." + markerMode),
                 btn -> {
                     SoulsVaultClientConfig.Settings now = SoulsVaultClientConfig.get();
-                    SoulsVaultClientConfig.setPartyVisuals(now.partyPortrait(), !now.partyMarkers());
+                    SoulsVaultClientConfig.MarkerMode[] modes = SoulsVaultClientConfig.MarkerMode.values();
+                    SoulsVaultClientConfig.setPartyVisuals(now.partyPortrait(), modes[(now.partyMarkers().ordinal() + 1) % modes.length]);
                     rebuildWidgets();
                 }));
+        markers.setTooltip(Tooltip.create(Component.translatable("gui.soulsvault.party.hud.markers." + markerMode + ".desc")));
     }
 
     private int addToggle(int y, String key, PartyRule rule, boolean canEdit, boolean value, Consumer<Boolean> setter) {

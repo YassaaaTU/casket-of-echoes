@@ -4,6 +4,7 @@ import com.soulsvault.Constants;
 import com.soulsvault.config.SoulsVaultClientConfig;
 import com.soulsvault.config.SoulsVaultClientConfig.HudAnchor;
 import com.soulsvault.config.SoulsVaultClientConfig.HungerDisplay;
+import com.soulsvault.config.SoulsVaultClientConfig.MarkerMode;
 import com.soulsvault.config.SoulsVaultClientConfig.PartyHudStyle;
 import com.soulsvault.config.SoulsVaultClientConfig.PortraitMode;
 import com.soulsvault.config.SoulsVaultClientConfig.ToastPosition;
@@ -110,7 +111,7 @@ public final class ForgeSoulsVaultConfig {
     private static final ForgeConfigSpec.IntValue PARTY_HUD_FULL_ROWS;
     private static final ForgeConfigSpec.EnumValue<PortraitMode> PARTY_PORTRAIT;
     private static final ForgeConfigSpec.EnumValue<HungerDisplay> PARTY_HUNGER;
-    private static final ForgeConfigSpec.BooleanValue PARTY_MARKERS;
+    private static final ForgeConfigSpec.EnumValue<MarkerMode> PARTY_MARKERS;
     private static final ForgeConfigSpec.IntValue PARTY_MARKER_MIN_DISTANCE;
     private static final ForgeConfigSpec.BooleanValue PARTY_ON_XAERO_MAPS;
 
@@ -343,9 +344,11 @@ public final class ForgeSoulsVaultConfig {
                 .translation(key("partyHud.portrait")).defineEnum("portrait", clientDefaults.partyPortrait());
         PARTY_HUNGER = c.comment("Hunger bar in party frames: AUTO (hidden when HungerStrike removes hunger), SHOW or HIDE.")
                 .translation(key("partyHud.hunger")).defineEnum("hunger", clientDefaults.partyHunger());
-        PARTY_MARKERS = c.comment("Show party members' heads, names and distance in the world (through walls).")
-                .translation(key("partyHud.markers")).define("markers", clientDefaults.partyMarkers());
-        PARTY_MARKER_MIN_DISTANCE = c.comment("Hide a member's marker when they are closer than this many blocks.")
+        PARTY_MARKERS = c.comment("Party members' heads in the world, seen through walls; look at one for name, distance and health.",
+                        "AUTO: Casket markers, unless Xaero's Minimap already draws tracked players in the world",
+                        "(its \"Tracked Players in World\" option), so there are never two icons. ON: always Casket markers. OFF: none.")
+                .translation(key("partyHud.markers")).defineEnum("markers", clientDefaults.partyMarkers());
+        PARTY_MARKER_MIN_DISTANCE = c.comment("Markers are hidden closer than this many blocks and fade in over the next 10.")
                 .translation(key("partyHud.markerMinDistance"))
                 .defineInRange("markerMinDistance", clientDefaults.partyMarkerMinDistance(), 0, 256);
         PARTY_ON_XAERO_MAPS = c.comment("Show party members on Xaero's Minimap and World Map (and its in-world icons) when installed.",
@@ -469,7 +472,7 @@ public final class ForgeSoulsVaultConfig {
         }
 
         @Override
-        public void setPartyVisuals(PortraitMode portrait, boolean markers) {
+        public void setPartyVisuals(PortraitMode portrait, MarkerMode markers) {
             PARTY_PORTRAIT.set(portrait);
             PARTY_MARKERS.set(markers);
             CLIENT_SPEC.save();
