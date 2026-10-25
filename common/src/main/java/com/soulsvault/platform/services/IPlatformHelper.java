@@ -14,6 +14,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.MenuType;
@@ -114,6 +115,13 @@ public interface IPlatformHelper {
      */
     default void sortPlayerMainInventory(ServerPlayer player) {
         InventorySorter.sortMainInventory(player);
+    }
+
+    /**
+     * Drops a client-only stand-in entity's attached mod data (Forge capabilities), so mods that take over entity
+     * rendering through it (Epic Fight's animated models) leave HUD portraits to the vanilla renderer.
+     */
+    default void detachCapabilities(Entity entity) {
     }
 
     default boolean triggerWaystonesButton() {

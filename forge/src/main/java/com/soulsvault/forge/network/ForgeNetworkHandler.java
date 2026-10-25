@@ -12,6 +12,8 @@ import com.soulsvault.network.PacketC2SOpenVault;
 import com.soulsvault.network.PacketC2SPartyAction;
 import com.soulsvault.network.PacketC2SVaultAction;
 import com.soulsvault.network.PacketS2CEquipLoad;
+import com.soulsvault.network.PacketS2CPartyEquipment;
+import com.soulsvault.network.PacketS2CPartyPositions;
 import com.soulsvault.network.PacketS2COpenPartyScreen;
 import com.soulsvault.network.PacketS2COverflowToast;
 import com.soulsvault.network.PacketS2CPartySync;
@@ -44,7 +46,7 @@ import java.util.function.Supplier;
  * Implements chunked vault synchronization (max 100 entries/packet) and single-entry delta updates.
  */
 public final class ForgeNetworkHandler {
-    private static final String PROTOCOL_VERSION = "5";
+    private static final String PROTOCOL_VERSION = "6";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(Constants.MOD_ID, "main"),
@@ -138,6 +140,10 @@ public final class ForgeNetworkHandler {
                 PacketS2COpenPartyScreen::handleClient);
         registerClientbound(PacketS2CEquipLoad.class, PacketS2CEquipLoad::encode, PacketS2CEquipLoad::decode,
                 PacketS2CEquipLoad::handleClient);
+        registerClientbound(PacketS2CPartyEquipment.class, PacketS2CPartyEquipment::encode, PacketS2CPartyEquipment::decode,
+                PacketS2CPartyEquipment::handleClient);
+        registerClientbound(PacketS2CPartyPositions.class, PacketS2CPartyPositions::encode, PacketS2CPartyPositions::decode,
+                PacketS2CPartyPositions::handleClient);
     }
 
     private static <T> void registerServerbound(

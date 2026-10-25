@@ -527,6 +527,23 @@ public class PartyScreen extends Screen {
                             anchors[(now.partyHudAnchor().ordinal() + 1) % anchors.length]);
                     rebuildWidgets();
                 }));
+        int visualsY = this.top + HEIGHT - 20;
+        addRenderableWidget(new GothicButton(this.left + 10, visualsY, 110, 14,
+                Component.translatable("gui.soulsvault.party.hud.portrait",
+                        Component.translatable("gui.soulsvault.party.hud.portrait." + client.partyPortrait().name().toLowerCase(Locale.ROOT))),
+                btn -> {
+                    SoulsVaultClientConfig.Settings now = SoulsVaultClientConfig.get();
+                    SoulsVaultClientConfig.PortraitMode[] modes = SoulsVaultClientConfig.PortraitMode.values();
+                    SoulsVaultClientConfig.setPartyVisuals(modes[(now.partyPortrait().ordinal() + 1) % modes.length], now.partyMarkers());
+                    rebuildWidgets();
+                }));
+        addRenderableWidget(new GothicButton(this.left + 124, visualsY, 110, 14,
+                Component.translatable(client.partyMarkers() ? "gui.soulsvault.party.hud.markers.on" : "gui.soulsvault.party.hud.markers.off"),
+                btn -> {
+                    SoulsVaultClientConfig.Settings now = SoulsVaultClientConfig.get();
+                    SoulsVaultClientConfig.setPartyVisuals(now.partyPortrait(), !now.partyMarkers());
+                    rebuildWidgets();
+                }));
     }
 
     private int addToggle(int y, String key, PartyRule rule, boolean canEdit, boolean value, Consumer<Boolean> setter) {

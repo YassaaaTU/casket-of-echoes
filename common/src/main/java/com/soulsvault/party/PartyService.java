@@ -645,17 +645,20 @@ public final class PartyService {
 
     public static void forceSync(ServerPlayer player) {
         LAST_SYNC_HASH.remove(player.getUUID());
+        PartyPresence.forget(player.getUUID());
     }
 
     public static void forget(UUID playerId) {
         LAST_SYNC_HASH.remove(playerId);
         LAST_HURT_TICK.remove(playerId);
+        PartyPresence.forget(playerId);
     }
 
     /**
      * Sends changed party snapshots (members' health, invites, settings) to online players every few ticks.
      */
     public static void tick(MinecraftServer server) {
+        PartyPresence.tick(server);
         if (server.getTickCount() % SYNC_INTERVAL_TICKS != 0) {
             return;
         }

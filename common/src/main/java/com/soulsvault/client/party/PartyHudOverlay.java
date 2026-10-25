@@ -4,12 +4,13 @@ import com.soulsvault.client.gui.widget.VaultItemSlotWidget;
 import com.soulsvault.config.SoulsVaultClientConfig;
 import com.soulsvault.config.SoulsVaultClientConfig.HudAnchor;
 import com.soulsvault.config.SoulsVaultClientConfig.PartyHudStyle;
+import com.soulsvault.config.SoulsVaultClientConfig.PortraitMode;
 import com.soulsvault.party.PartySnapshot;
+import com.soulsvault.platform.Services;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.PlayerFaceRenderer;
-import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.DefaultPlayerSkin;
@@ -18,7 +19,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.effect.MobEffect;
-import net.minecraft.world.entity.player.Player;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -28,9 +28,10 @@ import java.util.UUID;
 /**
  * MMO / Souls co-op style party frames: teammates' names and health on the screen edge.
  * <p>
- * Styles: {@code PORTRAIT} (head-and-shoulders model when the teammate is nearby, face otherwise), {@code BARS}
- * and {@code MINIMAL} (name + low-health / taking-damage indicator). Portrait and bars also show hunger, armor and
- * status effect icons. The first {@code partyHudFullRows} teammates
+ * Styles: {@code PORTRAIT} (static full-body model with the teammate's skin, armor and weapons, or their face),
+ * {@code BARS} and {@code MINIMAL} (name + low-health / taking-damage indicator). Portrait and bars also show armor,
+ * status effect icons and hunger (hidden automatically when HungerStrike removes hunger). The first
+ * {@code partyHudFullRows} teammates
  * use the chosen style; extra members of large parties (FTB teams, configs above 4) fall back to compact one-line
  * rows, capped with a "+N more" line so the frames never cover the screen. Players hide it with the toggle key or
  * the party GUI.
@@ -172,10 +173,12 @@ public final class PartyHudOverlay {
 
         // Hunger: a thin bar right under health
         int hungerY = barY + 5;
-        graphics.fill(textX, hungerY, textX + barWidth, hungerY + 2, 0xFF1B171E);
-        if (member.online() && !member.dead()) {
-            int fed = Math.round(barWidth * Mth.clamp(member.food() / 20.0F, 0.0F, 1.0F));
-            graphics.fill(textX, hungerY, textX + fed, hungerY + 2, member.food() <= 6 ? COLOR_HUNGER_LOW : COLOR_HUNGER);
+        if (showsHunger()) {
+            graphics.fill(textX, hungerY, textX + barWidth, hungerY + 2, 0xFF1B171E);
+            if (member.online() && !member.dead()) {
+                int fed = Math.round(barWidth * Mth.clamp(member.food() / 20.0F, 0.0F, 1.0F));
+                graphics.fill(textX, hungerY, textX + fed, hungerY + 2, member.food() <= 6 ? COLOR_HUNGER_LOW : COLOR_HUNGER);
+            }
         }
 
         int effectsY = hungerY + 4;
@@ -248,12 +251,24 @@ public final class PartyHudOverlay {
         }
     }
 
+    /**
+     * Hunger means nothing with HungerStrike installed (food heals directly), so AUTO hides it there.
+     */
+    private static boolean showsHunger() {
+        return switch (SoulsVaultClientConfig.get().partyHunger()) {
+            case SHOW -> true;
+            case HIDE -> false;
+            case AUTO -> !Services.PLATFORM.isModLoaded("hungerstrike");
+        };
+    }
+
     private static String formatHealth(float value) {
         return value == Math.floor(value) ? Integer.toString((int) value) : String.format(Locale.ROOT, "%.1f", value);
     }
 
     /**
-     * Head-and-shoulders model of the teammate when their entity is loaded nearby, else their skin's face.
+     * Static full-body model of the teammate (skin, armor, held weapons), or their face in FACE mode, while they are
+     * offline or dead, or if model portraits failed.
      */
     private static void renderPortrait(
             GuiGraphics graphics,
@@ -267,15 +282,15 @@ public final class PartyHudOverlay {
     ) {
         graphics.fill(x, y, x + w, y + h, 0xFF0D0B0E);
         VaultItemSlotWidget.drawBorder(graphics, x - 1, y - 1, w + 2, h + 2, member.online() ? COLOR_GOLD : COLOR_OFFLINE);
-        Player entity = mc.level != null ? mc.level.getPlayerByUUID(member.id()) : null;
-        if (entity != null && member.online() && !member.dead()) {
+        boolean model = SoulsVaultClientConfig.get().partyPortrait() == PortraitMode.MODEL;
+        if (model && member.online() && !member.dead() && PartyPortraits.isAvailable()) {
             // Scissor rectangles ignore the pose stack, so apply the HUD scale by hand.
             graphics.enableScissor(Math.round(x * scale), Math.round(y * scale), Math.round((x + w) * scale), Math.round((y + h) * scale));
-            int centerX = x + w / 2;
-            int feetY = y + h + 26;
-            InventoryScreen.renderEntityInInventoryFollowsMouse(graphics, centerX, feetY, 22, centerX, y - 10, entity);
+            boolean drawn = PartyPortraits.render(graphics, member, x + w / 2, y + h - 2, Math.round((h - 4) / 1.9F));
             graphics.disableScissor();
-            return;
+            if (drawn) {
+                return;
+            }
         }
         int faceSize = Math.min(w, h) - 6;
         PlayerFaceRenderer.draw(graphics, skinOf(mc, member.id()), x + (w - faceSize) / 2, y + (h - faceSize) / 2, faceSize);

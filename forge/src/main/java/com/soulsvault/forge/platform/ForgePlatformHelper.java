@@ -34,6 +34,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.SimpleMenuProvider;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.player.Player;
@@ -106,6 +107,11 @@ public class ForgePlatformHelper implements IPlatformHelper {
     @Override
     public List<AccessorySlotAccess> getCosmeticArmorSlots(Player player) {
         return CosmeticArmorCompat.getCosmeticArmorSlots(player);
+    }
+
+    @Override
+    public void detachCapabilities(Entity entity) {
+        entity.invalidateCaps();
     }
 
     @Override
