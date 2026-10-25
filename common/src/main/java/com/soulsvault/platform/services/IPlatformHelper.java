@@ -1,6 +1,7 @@
 package com.soulsvault.platform.services;
 
 import com.soulsvault.core.AccessorySlotAccess;
+import com.soulsvault.core.InventorySorter;
 import com.soulsvault.core.ItemKey;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.core.VaultAccess;
@@ -107,6 +108,14 @@ public interface IPlatformHelper {
     /**
      * Triggers the Waystones inventory button action if {@code waystones} is loaded.
      */
+    /**
+     * Sorts the player's 27 main inventory slots (never the hotbar). Loaders route this through an installed
+     * inventory-sorting mod (Quark) so it matches the player's usual sort order.
+     */
+    default void sortPlayerMainInventory(ServerPlayer player) {
+        InventorySorter.sortMainInventory(player);
+    }
+
     default boolean triggerWaystonesButton() {
         return false;
     }

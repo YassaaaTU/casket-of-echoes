@@ -339,6 +339,8 @@
   "config.soulsvault.vault.requireAttunement": "Require Attunement",
   "gui.soulsvault.action.cosmetic.tooltip.off": "Cosmetic Slots\n§7Show your vanity armor and cosmetic Curios. They only change how you look.",
   "gui.soulsvault.action.cosmetic.tooltip.on": "Cosmetic Slots (shown)\n§7Click to go back to the equipment you actually wear.",
+  "gui.soulsvault.action.sort_inventory": "Sort",
+  "gui.soulsvault.action.sort_inventory.tooltip": "Sort Inventory\n§7Sorts the 27 main slots; your hotbar, gear, crafting grid and Vault stay as they are. Uses Quark's sorting when Quark is installed.",
   "config.soulsvault.casketScreen.lastLeftPane": "Last Left Pane",
   "config.soulsvault.partyHud.portrait": "Portrait",
   "config.soulsvault.partyHud.hunger": "Hunger Bar",

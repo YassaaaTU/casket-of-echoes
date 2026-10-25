@@ -38,7 +38,8 @@ public final class PacketC2SVaultAction {
         REST_REPLENISH,
         SAVE_BUILD_ECHO,
         LOAD_BUILD_ECHO,
-        UNLOCK_REMOTE
+        UNLOCK_REMOTE,
+        SORT_INVENTORY
     }
 
     private final ActionType action;
@@ -105,6 +106,10 @@ public final class PacketC2SVaultAction {
 
     public static PacketC2SVaultAction unlockRemoteAccess() {
         return new PacketC2SVaultAction(ActionType.UNLOCK_REMOTE, ItemKey.EMPTY, 0L, 0);
+    }
+
+    public static PacketC2SVaultAction sortInventory() {
+        return new PacketC2SVaultAction(ActionType.SORT_INVENTORY, ItemKey.EMPTY, 0L, 0);
     }
 
     public ActionType getAction() {
@@ -182,6 +187,11 @@ public final class PacketC2SVaultAction {
             }
             case UNLOCK_REMOTE -> {
                 vaultMenu.tryUnlockRemoteAccess(player);
+                return;
+            }
+            case SORT_INVENTORY -> {
+                Services.PLATFORM.sortPlayerMainInventory(player);
+                PlayerVaultData.syncPlayerInventory(player);
                 return;
             }
             default -> {

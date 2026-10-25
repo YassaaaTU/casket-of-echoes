@@ -141,6 +141,7 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
     private GothicButton tabEchoesButton;
 
     private GothicButton cosmeticToggleButton;
+    private GothicButton sortInventoryButton;
     private boolean leftPaneRestored = false;
     private GothicButton prevAccessoryPageButton;
     private GothicButton nextAccessoryPageButton;
@@ -292,6 +293,14 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
                 }
         ).setIcon(cosmeticIcon());
         addRenderableWidget(this.cosmeticToggleButton);
+
+        // Sorts the 27 main inventory slots only (hotbar, crafting grid, gear and Vault untouched)
+        Component sortLabel = Component.translatable("gui.soulsvault.action.sort_inventory");
+        int sortWidth = Math.max(26, this.font.width(sortLabel) + 8);
+        this.sortInventoryButton = new GothicButton(leftPaneX + LEFT_PANE_WIDTH - 7 - sortWidth, this.topPos + 127, sortWidth, 11,
+                sortLabel, btn -> Services.PLATFORM.sendToServer(PacketC2SVaultAction.sortInventory()));
+        this.sortInventoryButton.setTooltip(Tooltip.create(Component.translatable("gui.soulsvault.action.sort_inventory.tooltip")));
+        addRenderableWidget(this.sortInventoryButton);
 
         this.prevAccessoryPageButton = new GothicButton(leftPaneX + 147, this.topPos + SoulsVaultMenu.EQUIP_ROW_Y, 11, 16,
                 Component.literal("<"), btn -> {

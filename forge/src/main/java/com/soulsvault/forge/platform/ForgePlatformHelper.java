@@ -1,11 +1,13 @@
 package com.soulsvault.forge.platform;
 
 import com.soulsvault.core.AccessorySlotAccess;
+import com.soulsvault.core.InventorySorter;
 import com.soulsvault.core.ItemKey;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.core.VaultEntry;
 import com.soulsvault.forge.compat.CosmeticArmorCompat;
 import com.soulsvault.forge.compat.CuriosCompat;
+import com.soulsvault.forge.compat.QuarkCompat;
 import com.soulsvault.forge.compat.EpicFightCompat;
 import com.soulsvault.forge.compat.FtbQuestsCompat;
 import com.soulsvault.forge.compat.WaystonesCompat;
@@ -104,6 +106,13 @@ public class ForgePlatformHelper implements IPlatformHelper {
     @Override
     public List<AccessorySlotAccess> getCosmeticArmorSlots(Player player) {
         return CosmeticArmorCompat.getCosmeticArmorSlots(player);
+    }
+
+    @Override
+    public void sortPlayerMainInventory(ServerPlayer player) {
+        if (!QuarkCompat.sortMainInventory(player)) {
+            InventorySorter.sortMainInventory(player);
+        }
     }
 
     @Override
