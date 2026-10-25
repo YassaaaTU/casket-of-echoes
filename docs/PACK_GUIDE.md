@@ -24,9 +24,25 @@ Everything a pack can change without code. Server settings live in `<world>/serv
 
 `config/soulsvault-client.toml` (also in the party GUI's options): party frame style, anchor, scale, `portrait`
 (`MODEL`: static full-body model with the teammate's skin, armor and held weapons; `FACE`), `hunger` (`AUTO` hides the
-hunger bar when HungerStrike is installed), `markers` (teammates' heads, names and distance in the world, through walls)
-and `markerMinDistance`. The Casket screen reopens on the last category, sort mode and left pane
-(Gear & Curios / 3x3 Craft / Echoes) while `rememberLastTab` is on.
+hunger bar when HungerStrike is installed), `markers`, `markerMinDistance` and `xaeroMaps` (see *Finding your party*).
+The Casket screen reopens on the last category, sort mode and left pane (Gear & Curios / 3x3 Craft / Echoes) while
+`rememberLastTab` is on.
+
+## Finding your party
+
+The server shares where every online party member is, in any dimension (spectators excluded), four times a second
+while they move and not at all while everyone stands still.
+
+- **World markers**: each teammate in your dimension is a small face at their feet, seen through walls, translucent,
+  hidden within `markerMinDistance` blocks (default 10) and fading in over the next 10. Look at one (crosshair over
+  it) to highlight it: opaque, on top, with name, distance and a health bar. The leader has a gold frame; a teammate
+  at a quarter health or less pulses red. Far-away teammates glide between updates instead of jumping.
+- **Xaero's Minimap and World Map** (client mods, optional): party members appear on both, as Xaero's tracked
+  players, in every dimension; the world map lists them in its tracked player menu. Nothing is needed on the server,
+  and Xaero's own server-side tracking (FTB Teams, OPAC) keeps working alongside. Turn it off with `xaeroMaps = false`.
+- `markers`: `AUTO` (default) uses the Casket markers unless Xaero's Minimap is already drawing tracked players in
+  the world (its *Tracked Players in World* option), so a teammate never gets two icons; `ON` always draws the Casket
+  markers; `OFF` draws none. To get Casket markers with Xaero installed, turn off Xaero's *Tracked Players in World*.
 
 ## Tags
 
