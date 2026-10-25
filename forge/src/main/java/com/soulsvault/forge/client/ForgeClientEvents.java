@@ -7,6 +7,7 @@ import com.soulsvault.client.gui.SoulsVaultScreen;
 import com.soulsvault.client.hud.SoulsOverflowToastOverlay;
 import com.soulsvault.client.party.ClientPartyCache;
 import com.soulsvault.client.party.PartyHudOverlay;
+import com.soulsvault.client.party.PartyMarkers;
 import com.soulsvault.client.renderer.SpectralCasketRenderer;
 import com.soulsvault.config.SoulsVaultConfig;
 import com.soulsvault.forge.network.ForgeNetworkHandler;
@@ -20,6 +21,7 @@ import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.client.event.EntityRenderersEvent;
 import net.minecraftforge.client.event.RegisterGuiOverlaysEvent;
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
+import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.client.event.ScreenEvent;
 import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
 import net.minecraftforge.client.settings.KeyConflictContext;
@@ -45,6 +47,17 @@ public final class ForgeClientEvents {
         MinecraftForge.EVENT_BUS.addListener(ForgeClientEvents::onScreenOpening);
         MinecraftForge.EVENT_BUS.addListener(ForgeClientEvents::onClientTick);
         MinecraftForge.EVENT_BUS.addListener(ForgeClientEvents::onLoggingOut);
+        MinecraftForge.EVENT_BUS.addListener(ForgeClientEvents::onRenderLevelStage);
+    }
+
+    /**
+     * Projects party markers with the camera of the frame being drawn (the HUD layer draws them afterwards).
+     */
+    private static void onRenderLevelStage(final RenderLevelStageEvent event) {
+        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_LEVEL) {
+            PartyMarkers.capture(event.getPoseStack().last().pose(), event.getProjectionMatrix(),
+                    event.getCamera().getPosition(), event.getPartialTick());
+        }
     }
 
     private static void onLoggingOut(final ClientPlayerNetworkEvent.LoggingOut event) {
@@ -115,6 +128,12 @@ public final class ForgeClientEvents {
                 "overflow_toast",
                 (gui, guiGraphics, partialTick, screenWidth, screenHeight) ->
                         SoulsOverflowToastOverlay.render(guiGraphics, partialTick, screenWidth, screenHeight)
+        );
+        event.registerBelow(
+                VanillaGuiOverlay.HOTBAR.id(),
+                "party_markers",
+                (gui, guiGraphics, partialTick, screenWidth, screenHeight) ->
+                        PartyMarkers.render(guiGraphics, partialTick, screenWidth, screenHeight)
         );
         event.registerAbove(
                 VanillaGuiOverlay.HOTBAR.id(),
