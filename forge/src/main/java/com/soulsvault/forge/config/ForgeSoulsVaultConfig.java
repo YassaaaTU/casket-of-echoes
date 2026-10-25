@@ -112,6 +112,7 @@ public final class ForgeSoulsVaultConfig {
     private static final ForgeConfigSpec.EnumValue<HungerDisplay> PARTY_HUNGER;
     private static final ForgeConfigSpec.BooleanValue PARTY_MARKERS;
     private static final ForgeConfigSpec.IntValue PARTY_MARKER_MIN_DISTANCE;
+    private static final ForgeConfigSpec.BooleanValue PARTY_ON_XAERO_MAPS;
 
     static {
         ForgeConfigSpec.Builder b = new ForgeConfigSpec.Builder();
@@ -347,6 +348,9 @@ public final class ForgeSoulsVaultConfig {
         PARTY_MARKER_MIN_DISTANCE = c.comment("Hide a member's marker when they are closer than this many blocks.")
                 .translation(key("partyHud.markerMinDistance"))
                 .defineInRange("markerMinDistance", clientDefaults.partyMarkerMinDistance(), 0, 256);
+        PARTY_ON_XAERO_MAPS = c.comment("Show party members on Xaero's Minimap and World Map (and its in-world icons) when installed.",
+                        "Works on any server running Casket of Echoes; Xaero's mods are not needed on the server.")
+                .translation(key("partyHud.xaeroMaps")).define("xaeroMaps", clientDefaults.partyOnXaeroMaps());
         c.pop();
 
         CLIENT_SPEC = c.build();
@@ -440,7 +444,8 @@ public final class ForgeSoulsVaultConfig {
                 PARTY_PORTRAIT.get(),
                 PARTY_HUNGER.get(),
                 PARTY_MARKERS.get(),
-                PARTY_MARKER_MIN_DISTANCE.get()
+                PARTY_MARKER_MIN_DISTANCE.get(),
+                PARTY_ON_XAERO_MAPS.get()
         );
     }
 

@@ -68,7 +68,8 @@ public final class SoulsVaultClientConfig {
             PortraitMode partyPortrait,
             HungerDisplay partyHunger,
             boolean partyMarkers,
-            int partyMarkerMinDistance
+            int partyMarkerMinDistance,
+            boolean partyOnXaeroMaps
     ) {
         public static final Settings DEFAULT = new Settings(
                 true,
@@ -88,7 +89,8 @@ public final class SoulsVaultClientConfig {
                 PortraitMode.MODEL,
                 HungerDisplay.AUTO,
                 true,
-                8
+                8,
+                true
         );
     }
 

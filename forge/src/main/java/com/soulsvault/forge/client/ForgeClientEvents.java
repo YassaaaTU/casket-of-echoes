@@ -8,6 +8,7 @@ import com.soulsvault.client.hud.SoulsOverflowToastOverlay;
 import com.soulsvault.client.party.ClientPartyCache;
 import com.soulsvault.client.party.PartyHudOverlay;
 import com.soulsvault.client.party.PartyMarkers;
+import com.soulsvault.client.party.XaeroPartyTracker;
 import com.soulsvault.client.renderer.SpectralCasketRenderer;
 import com.soulsvault.config.SoulsVaultConfig;
 import com.soulsvault.forge.network.ForgeNetworkHandler;
@@ -68,6 +69,7 @@ public final class ForgeClientEvents {
         event.enqueueWork(() -> {
             MenuScreens.register(ForgeModBlocks.VAULT_MENU.get(), SoulsVaultScreen::new);
             SoulsOverflowToastOverlay.init();
+            XaeroPartyTracker.register();
             ClientVaultCache.setVaultScreenOpener(() -> {
                 Minecraft mc = Minecraft.getInstance();
                 if (mc.screen instanceof SoulsVaultScreen vaultScreen) {

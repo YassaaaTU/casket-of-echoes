@@ -371,6 +371,7 @@
   "config.soulsvault.partyHud.hunger": "Hunger Bar",
   "config.soulsvault.partyHud.markers": "World Markers",
   "config.soulsvault.partyHud.markerMinDistance": "Marker Min Distance",
+  "config.soulsvault.partyHud.xaeroMaps": "Show Party on Xaero's Maps",
   "config.soulsvault.keepsakes": "Keepsakes",
   "config.soulsvault.keepsakes.requireUnlock": "Require Unlock",
   "config.soulsvault.keepsakes.slots": "Item Kinds",
