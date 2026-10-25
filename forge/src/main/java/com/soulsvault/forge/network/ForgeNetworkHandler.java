@@ -48,7 +48,7 @@ import java.util.function.Supplier;
  * Implements chunked vault synchronization (max 100 entries/packet) and single-entry delta updates.
  */
 public final class ForgeNetworkHandler {
-    private static final String PROTOCOL_VERSION = "6";
+    private static final String PROTOCOL_VERSION = "7";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(Constants.MOD_ID, "main"),

@@ -6,13 +6,17 @@ import com.soulsvault.party.PartyInvite;
 import com.soulsvault.party.PartySnapshot;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
 import javax.annotation.Nullable;
-import java.util.HashMap;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -28,15 +32,59 @@ public final class ClientPartyCache {
     private static volatile List<PartyInvite> invites = List.of();
     private static volatile long privateCasketItems;
     private static final Map<UUID, List<ItemStack>> EQUIPMENT = new ConcurrentHashMap<>();
-    private static final Map<UUID, Track> POSITIONS = new ConcurrentHashMap<>();
-    /** Position updates arrive every 10 ticks; markers glide between them over this long. */
-    private static final long POSITION_LERP_MILLIS = 500L;
+    private static final Map<UUID, TrackedMember> TRACKED = new ConcurrentHashMap<>();
 
-    /** A teammate's last two reported positions, so far-away markers move smoothly. */
-    private record Track(Vec3 from, Vec3 to, long receivedAt) {
-        Vec3 at(long now) {
-            double t = Math.min(1.0D, Math.max(0.0D, (now - this.receivedAt) / (double) POSITION_LERP_MILLIS));
-            return this.from.lerp(this.to, t);
+    /**
+     * A teammate's server-reported position. The same instance lives for as long as the teammate is reported (Xaero's
+     * map collectors rebuild their elements whenever the object changes), updated in place and interpolated between
+     * reports so markers and map icons glide instead of jumping every 250 ms.
+     */
+    public static final class TrackedMember {
+        private static final long MIN_GLIDE_MILLIS = 50L;
+        private static final long MAX_GLIDE_MILLIS = 500L;
+        /** Moves longer than this (teleports, respawns) snap instead of gliding across the map. */
+        private static final double SNAP_DISTANCE_SQR = 64.0D * 64.0D;
+
+        private record Motion(ResourceKey<Level> dimension, Vec3 from, Vec3 to, long receivedAt, long glideMillis) {
+            Vec3 at(long now) {
+                if (this.glideMillis <= 0L) {
+                    return this.to;
+                }
+                double t = Math.min(1.0D, Math.max(0.0D, (now - this.receivedAt) / (double) this.glideMillis));
+                return this.from.lerp(this.to, t);
+            }
+        }
+
+        private final UUID id;
+        private volatile Motion motion;
+
+        private TrackedMember(UUID id) {
+            this.id = id;
+        }
+
+        private void report(ResourceKey<Level> dimension, Vec3 position, long now) {
+            Motion previous = this.motion;
+            if (previous == null || !previous.dimension().equals(dimension)
+                    || previous.to().distanceToSqr(position) > SNAP_DISTANCE_SQR) {
+                this.motion = new Motion(dimension, position, position, now, 0L);
+                return;
+            }
+            // Glide over the time since the last report (250 ms while moving; reports stop while standing still)
+            long glide = Math.max(MIN_GLIDE_MILLIS, Math.min(MAX_GLIDE_MILLIS, now - previous.receivedAt()));
+            this.motion = new Motion(dimension, previous.at(now), position, now, glide);
+        }
+
+        public UUID id() {
+            return this.id;
+        }
+
+        public ResourceKey<Level> dimension() {
+            return this.motion.dimension();
+        }
+
+        /** Interpolated feet position. */
+        public Vec3 position() {
+            return this.motion.at(System.currentTimeMillis());
         }
     }
 
@@ -54,7 +102,7 @@ public final class ClientPartyCache {
 
     public static void reset() {
         EQUIPMENT.clear();
-        POSITIONS.clear();
+        TRACKED.clear();
         update(null, List.of(), 0L);
     }
 
@@ -71,23 +119,27 @@ public final class ClientPartyCache {
 
     public static void handlePositions(List<PacketS2CPartyPositions.Entry> entries) {
         long now = System.currentTimeMillis();
-        Map<UUID, Track> next = new HashMap<>();
+        Set<UUID> reported = new HashSet<>();
         for (PacketS2CPartyPositions.Entry entry : entries) {
-            Track previous = POSITIONS.get(entry.member());
-            Vec3 from = previous != null ? previous.at(now) : entry.position();
-            next.put(entry.member(), new Track(from, entry.position(), now));
+            reported.add(entry.member());
+            TRACKED.computeIfAbsent(entry.member(), TrackedMember::new).report(entry.dimension(), entry.position(), now);
         }
-        POSITIONS.clear();
-        POSITIONS.putAll(next);
+        TRACKED.keySet().retainAll(reported);
     }
 
     /**
-     * Interpolated server-reported position of a teammate in the player's dimension, or {@code null}.
+     * Where the server last reported a teammate, or {@code null} when they are offline, spectating or not a teammate.
      */
     @Nullable
-    public static Vec3 getReportedPosition(UUID member) {
-        Track track = POSITIONS.get(member);
-        return track != null ? track.at(System.currentTimeMillis()) : null;
+    public static TrackedMember getTracked(UUID member) {
+        return TRACKED.get(member);
+    }
+
+    /**
+     * Every teammate the server reports, in any dimension.
+     */
+    public static Collection<TrackedMember> getTrackedMembers() {
+        return TRACKED.values();
     }
 
     @Nullable

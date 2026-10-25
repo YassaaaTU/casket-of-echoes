@@ -102,8 +102,11 @@ public final class PartyMarkers {
         if (live != null) {
             return live.getPosition(partialTick).add(0.0D, live.getBbHeight() + HEAD_OFFSET, 0.0D);
         }
-        Vec3 reported = ClientPartyCache.getReportedPosition(id);
-        return reported != null ? reported.add(0.0D, REPORTED_HEAD_HEIGHT, 0.0D) : null;
+        ClientPartyCache.TrackedMember tracked = ClientPartyCache.getTracked(id);
+        if (tracked == null || !tracked.dimension().equals(mc.level.dimension())) {
+            return null;
+        }
+        return tracked.position().add(0.0D, REPORTED_HEAD_HEIGHT, 0.0D);
     }
 
     public static void render(GuiGraphics graphics, float partialTick, int screenWidth, int screenHeight) {

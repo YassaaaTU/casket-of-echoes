@@ -17,13 +17,14 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Where teammates are and what they wear, for the party HUD portraits and the in-world party markers.
- * Equipment is sent per viewer only when a teammate's gear changes (durability ticks excluded); positions of
- * teammates in the viewer's dimension go out twice a second.
+ * Where teammates are and what they wear, for the party HUD portraits, the in-world party markers and Xaero's maps.
+ * Equipment is sent per viewer only when a teammate's gear changes (durability ticks excluded). Positions of all
+ * online teammates (any dimension, spectators left out) are checked every 250 ms, like Xaero's own tracker, and sent
+ * only when they differ from what the viewer last received.
  */
 public final class PartyPresence {
     private static final int EQUIPMENT_INTERVAL_TICKS = 5;
-    private static final int POSITION_INTERVAL_TICKS = 10;
+    private static final int POSITION_INTERVAL_TICKS = 5;
     /** Stacks whose NBT is larger than this (as SNBT characters) are sent without it; the portrait only needs the item. */
     private static final int MAX_SENT_NBT_CHARS = 16384;
     public static final EquipmentSlot[] SLOTS = {
@@ -33,7 +34,8 @@ public final class PartyPresence {
 
     /** viewer -> teammate -> equipment signature last sent. */
     private static final Map<UUID, Map<UUID, Integer>> SENT_EQUIPMENT = new ConcurrentHashMap<>();
-    private static final Map<UUID, Boolean> SENT_POSITIONS = new ConcurrentHashMap<>();
+    /** viewer -> positions last sent. */
+    private static final Map<UUID, List<PacketS2CPartyPositions.Entry>> SENT_POSITIONS = new ConcurrentHashMap<>();
 
     private PartyPresence() {
     }
@@ -54,9 +56,12 @@ public final class PartyPresence {
         for (ServerPlayer viewer : server.getPlayerList().getPlayers()) {
             PartyView party = PartyService.getParty(server, viewer.getUUID());
             if (party == null) {
+                if (positions) {
+                    sendPositions(viewer, List.of());
+                }
                 continue;
             }
-            List<PacketS2CPartyPositions.Entry> nearby = new ArrayList<>();
+            List<PacketS2CPartyPositions.Entry> tracked = new ArrayList<>();
             for (UUID memberId : party.members()) {
                 if (memberId.equals(viewer.getUUID())) {
                     continue;
@@ -74,16 +79,27 @@ public final class PartyPresence {
                         Services.PLATFORM.sendToClient(viewer, new PacketS2CPartyEquipment(memberId, equipmentOf(member)));
                     }
                 }
-                if (positions && member.level() == viewer.level() && !member.isSpectator()) {
-                    nearby.add(new PacketS2CPartyPositions.Entry(memberId, member.position()));
+                if (positions && !member.isSpectator()) {
+                    tracked.add(new PacketS2CPartyPositions.Entry(memberId, member.level().dimension(), member.position()));
                 }
             }
-            // An empty update clears markers once, after which nothing is sent until someone is around again
-            if (positions && (!nearby.isEmpty() || SENT_POSITIONS.getOrDefault(viewer.getUUID(), false))) {
-                Services.PLATFORM.sendToClient(viewer, new PacketS2CPartyPositions(nearby));
-                SENT_POSITIONS.put(viewer.getUUID(), !nearby.isEmpty());
+            if (positions) {
+                sendPositions(viewer, tracked);
             }
         }
+    }
+
+    /**
+     * Sends the viewer's teammate positions unless they are exactly what was sent last time (nobody moved), so idle
+     * parties cost nothing. An empty list is sent once to clear what the client tracks.
+     */
+    private static void sendPositions(ServerPlayer viewer, List<PacketS2CPartyPositions.Entry> entries) {
+        List<PacketS2CPartyPositions.Entry> previous = SENT_POSITIONS.get(viewer.getUUID());
+        if (previous == null ? entries.isEmpty() : previous.equals(entries)) {
+            return;
+        }
+        SENT_POSITIONS.put(viewer.getUUID(), List.copyOf(entries));
+        Services.PLATFORM.sendToClient(viewer, new PacketS2CPartyPositions(entries));
     }
 
     private static int signature(ServerPlayer member) {
