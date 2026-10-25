@@ -18,6 +18,15 @@ Everything a pack can change without code. Server settings live in `<world>/serv
 | `upgrades` | Reliquary Shard capacity / kinds per shard, max shards per Casket |
 | `equipLoad` | meter on/off, base capacity, optional overload slowdown |
 | `party` | provider (`AUTO`, `BUILTIN`, `FTB_TEAMS`, `OPAC`, `VANILLA_TEAMS`, `NONE`), built-in parties, max members, and `LEADER_CHOICE` / `ALWAYS` / `NEVER` rules for shared Casket, friendly fire, advancement and quest sharing; `protectOwnPets` (owners can't hurt their own pets unless sneaking, also under Epic Fight battle mode); whether merge / override are allowed; `returnContributionsOnLeave`; `upgradeCreditMinutes` |
+| `keepsakes` | `requireUnlock` (Keepsake Coffer needed), `slots` (kinds of items), `baseStacks` / `upgradedStacks` (stacks of each item before / after a second Coffer) |
+
+## Client options
+
+`config/soulsvault-client.toml` (also in the party GUI's options): party frame style, anchor, scale, `portrait`
+(`MODEL`: static full-body model with the teammate's skin, armor and held weapons; `FACE`), `hunger` (`AUTO` hides the
+hunger bar when HungerStrike is installed), `markers` (teammates' heads, names and distance in the world, through walls)
+and `markerMinDistance`. The Casket screen reopens on the last category, sort mode and left pane
+(Gear & Curios / 3x3 Craft / Echoes) while `rememberLastTab` is on.
 
 ## Tags
 
@@ -96,6 +105,21 @@ Granted from code, shown in their own "Casket of Echoes" advancement tab, and us
 | `soulsvault:spectral_casket` | a Vestige Moth summons a Spectral Casket |
 | `soulsvault:casket_expanded` | a Reliquary Shard is used |
 | `soulsvault:covenant_joined` | the player joins a Covenant Casket |
+| `soulsvault:keepsakes_unlocked` / `soulsvault:keepsakes_upgraded` | a Keepsake Coffer unlocks / deepens the Keepsakes |
+
+## Keepsakes (private stash)
+
+The **Keepsakes** button in the Vault pane switches to a small stash that belongs to the player alone, even while
+their party shares a Covenant Casket: for quest tokens, trade keys and anything they don't want others to take.
+It holds `keepsakes.slots` kinds of items, each up to `baseStacks` stacks (128 of a 64-stack item at 2), and a
+second **Keepsake Coffer** (`soulsvault:keepsake_coffer`) deepens it to `upgradedStacks`. Access follows the Vault's
+rules: attunement, Rest Points or the remote cost, and the combat lock. Shift-clicking an item while the Keepsakes
+view is open stores it there; Rest & Replenish, overflow and Deposit Category never touch it.
+
+## Inventory sorting
+
+The **Sort** button above the Casket screen's inventory sorts the 27 main slots only (never the hotbar, gear,
+crafting grid or Vault). With Quark installed and its Inventory Sorting module on, it uses Quark's own sorting.
 
 ## Covenant Caskets (shared party storage)
 
