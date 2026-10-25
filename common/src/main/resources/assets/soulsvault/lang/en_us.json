@@ -31,7 +31,7 @@
   "gui.soulsvault.action.echoes_close": "Inventory",
   "gui.soulsvault.action.echo_save": "Save",
   "gui.soulsvault.action.echo_load": "Swap",
-  "gui.soulsvault.action.cosmetic": "Cosm.",
+  "gui.soulsvault.action.cosmetic": "Cosmetics",
   "gui.soulsvault.action.waystones": "✦ Waystone",
   "gui.soulsvault.notice.rest_point_required": "Rest Point Required",
   "gui.soulsvault.notice.no_curios": "No Curios / Aether slots active",
@@ -336,5 +336,12 @@
   "gui.soulsvault.attuned.subtitle": "Echoes of all you carry now rest within",
   "commands.soulsvault.attune.success": "Attuned %s player(s) to their Casket",
   "commands.soulsvault.attune.revoked": "Sealed the Casket of %s player(s)",
-  "config.soulsvault.vault.requireAttunement": "Require Attunement"
+  "config.soulsvault.vault.requireAttunement": "Require Attunement",
+  "gui.soulsvault.action.cosmetic.tooltip.off": "Cosmetic Slots\n§7Show your vanity armor and cosmetic Curios. They only change how you look.",
+  "gui.soulsvault.action.cosmetic.tooltip.on": "Cosmetic Slots (shown)\n§7Click to go back to the equipment you actually wear.",
+  "config.soulsvault.casketScreen.lastLeftPane": "Last Left Pane",
+  "config.soulsvault.partyHud.portrait": "Portrait",
+  "config.soulsvault.partyHud.hunger": "Hunger Bar",
+  "config.soulsvault.partyHud.markers": "World Markers",
+  "config.soulsvault.partyHud.markerMinDistance": "Marker Min Distance"
 }

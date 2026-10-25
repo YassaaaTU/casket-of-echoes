@@ -6,6 +6,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.ItemStack;
 
 import java.util.function.Consumer;
 
@@ -24,6 +25,7 @@ public final class GothicButton extends AbstractWidget {
 
     private final Consumer<GothicButton> onPress;
     private boolean highlighted = false;
+    private ItemStack icon = ItemStack.EMPTY;
 
     public GothicButton(
             int x,
@@ -39,6 +41,14 @@ public final class GothicButton extends AbstractWidget {
 
     public void setHighlighted(boolean highlighted) {
         this.highlighted = highlighted;
+    }
+
+    /**
+     * Draws {@code icon} instead of the message (which then only serves narration); pair it with a tooltip.
+     */
+    public GothicButton setIcon(ItemStack icon) {
+        this.icon = icon != null ? icon : ItemStack.EMPTY;
+        return this;
     }
 
     @Override
@@ -67,6 +77,19 @@ public final class GothicButton extends AbstractWidget {
             VaultItemSlotWidget.drawBorder(graphics, x + 1, y + 1, w - 2, h - 2, COLOR_BORDER_INNER);
         }
         VaultItemSlotWidget.drawBorder(graphics, x, y, w, h, borderColor);
+
+        if (!this.icon.isEmpty()) {
+            float iconScale = Math.min(1.0F, (Math.min(w, h) - 2) / 16.0F);
+            graphics.pose().pushPose();
+            graphics.pose().translate(x + (w - 16 * iconScale) / 2.0F, y + (h - 16 * iconScale) / 2.0F, 0.0F);
+            graphics.pose().scale(iconScale, iconScale, 1.0F);
+            graphics.renderItem(this.icon, 0, 0);
+            graphics.pose().popPose();
+            if (!this.active) {
+                graphics.fill(x + 1, y + 1, x + w - 1, y + h - 1, 0x99121013);
+            }
+            return;
+        }
 
         Font font = Minecraft.getInstance().font;
         String text = getMessage().getString();

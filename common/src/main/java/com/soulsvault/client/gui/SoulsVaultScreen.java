@@ -31,6 +31,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -44,6 +45,7 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -139,6 +141,7 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
     private GothicButton tabEchoesButton;
 
     private GothicButton cosmeticToggleButton;
+    private boolean leftPaneRestored = false;
     private GothicButton prevAccessoryPageButton;
     private GothicButton nextAccessoryPageButton;
     private GothicButton clearCraftingGridButton;
@@ -276,9 +279,9 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
 
         // 5. Sub-Mode Specific Controls (Cosmetic toggle, Accessory page arrows, Clear Crafting Grid)
         this.cosmeticToggleButton = new GothicButton(
-                leftPaneX + 109,
+                leftPaneX + 125,
                 this.topPos + SoulsVaultMenu.EQUIP_ROW_Y,
-                36,
+                20,
                 16,
                 Component.translatable("gui.soulsvault.action.cosmetic"),
                 btn -> {
@@ -287,7 +290,7 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
                     btn.setHighlighted(this.menu.isCosmeticMode());
                     updateLeftPaneSubControls();
                 }
-        );
+        ).setIcon(cosmeticIcon());
         addRenderableWidget(this.cosmeticToggleButton);
 
         this.prevAccessoryPageButton = new GothicButton(leftPaneX + 147, this.topPos + SoulsVaultMenu.EQUIP_ROW_Y, 11, 16,
@@ -359,6 +362,24 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
         updateLockStateControls();
         this.gridView.setSearch(this.searchBox.getValue());
         this.gridView.rebuild();
+
+        // Reopen on the left pane used last time (init also runs on resize, so only once per screen)
+        if (!this.leftPaneRestored) {
+            this.leftPaneRestored = true;
+            LeftPaneMode remembered = SoulsVaultClientConfig.initialLeftPane();
+            if (remembered != this.menu.getLeftPaneMode()) {
+                setLeftPaneMode(remembered);
+            }
+        }
+    }
+
+    /**
+     * A dyed leather tunic: "what you look like", for the cosmetic slots toggle.
+     */
+    private static ItemStack cosmeticIcon() {
+        ItemStack tunic = new ItemStack(Items.LEATHER_CHESTPLATE);
+        tunic.getOrCreateTagElement("display").putInt("color", 0x8E5BB5);
+        return tunic;
     }
 
     @Override
@@ -406,6 +427,7 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
     public void setLeftPaneMode(LeftPaneMode mode) {
         this.menu.setLeftPaneMode(mode);
         sendMenuButton(SoulsVaultMenu.leftPaneButtonId(mode));
+        SoulsVaultClientConfig.rememberLeftPane(mode);
         this.refillPopover = null;
         this.echoPopover = null;
         updateLeftPaneSubControls();
@@ -431,6 +453,8 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
         if (this.cosmeticToggleButton != null) {
             this.cosmeticToggleButton.visible = (mode == LeftPaneMode.GEAR_CURIOS) && this.menu.hasCosmeticSlots();
             this.cosmeticToggleButton.setHighlighted(this.menu.isCosmeticMode());
+            this.cosmeticToggleButton.setTooltip(Tooltip.create(Component.translatable(this.menu.isCosmeticMode()
+                    ? "gui.soulsvault.action.cosmetic.tooltip.on" : "gui.soulsvault.action.cosmetic.tooltip.off")));
         }
         int totalPages = this.menu.getTotalAccessoryPages();
         if (this.prevAccessoryPageButton != null) {

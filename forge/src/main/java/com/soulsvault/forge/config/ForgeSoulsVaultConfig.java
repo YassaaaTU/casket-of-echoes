@@ -3,7 +3,9 @@ package com.soulsvault.forge.config;
 import com.soulsvault.Constants;
 import com.soulsvault.config.SoulsVaultClientConfig;
 import com.soulsvault.config.SoulsVaultClientConfig.HudAnchor;
+import com.soulsvault.config.SoulsVaultClientConfig.HungerDisplay;
 import com.soulsvault.config.SoulsVaultClientConfig.PartyHudStyle;
+import com.soulsvault.config.SoulsVaultClientConfig.PortraitMode;
 import com.soulsvault.config.SoulsVaultClientConfig.ToastPosition;
 import com.soulsvault.config.SoulsVaultConfig;
 import com.soulsvault.config.SoulsVaultConfig.PartyProviderType;
@@ -13,6 +15,7 @@ import com.soulsvault.core.VaultCategory;
 import com.soulsvault.core.VaultSortMode;
 import com.soulsvault.forge.network.ForgeNetworkHandler;
 import com.soulsvault.party.PartyService;
+import com.soulsvault.world.inventory.SoulsVaultMenu.LeftPaneMode;
 import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.eventbus.api.IEventBus;
@@ -95,11 +98,16 @@ public final class ForgeSoulsVaultConfig {
     private static final ForgeConfigSpec.BooleanValue REMEMBER_LAST_TAB;
     private static final ForgeConfigSpec.EnumValue<VaultCategory> LAST_CATEGORY;
     private static final ForgeConfigSpec.EnumValue<VaultSortMode> LAST_SORT;
+    private static final ForgeConfigSpec.EnumValue<LeftPaneMode> LAST_LEFT_PANE;
     private static final ForgeConfigSpec.BooleanValue PARTY_HUD_VISIBLE;
     private static final ForgeConfigSpec.EnumValue<PartyHudStyle> PARTY_HUD_STYLE;
     private static final ForgeConfigSpec.EnumValue<HudAnchor> PARTY_HUD_ANCHOR;
     private static final ForgeConfigSpec.DoubleValue PARTY_HUD_SCALE;
     private static final ForgeConfigSpec.IntValue PARTY_HUD_FULL_ROWS;
+    private static final ForgeConfigSpec.EnumValue<PortraitMode> PARTY_PORTRAIT;
+    private static final ForgeConfigSpec.EnumValue<HungerDisplay> PARTY_HUNGER;
+    private static final ForgeConfigSpec.BooleanValue PARTY_MARKERS;
+    private static final ForgeConfigSpec.IntValue PARTY_MARKER_MIN_DISTANCE;
 
     static {
         ForgeConfigSpec.Builder b = new ForgeConfigSpec.Builder();
@@ -298,6 +306,8 @@ public final class ForgeSoulsVaultConfig {
                 .defineEnum("lastCategory", clientDefaults.lastCategory());
         LAST_SORT = c.comment("Remembered automatically.").translation(key("casketScreen.lastSortMode"))
                 .defineEnum("lastSortMode", clientDefaults.lastSortMode());
+        LAST_LEFT_PANE = c.comment("Left pane (Gear & Curios, 3x3 Craft, Echoes) reopened when rememberLastTab is on. Remembered automatically.")
+                .translation(key("casketScreen.lastLeftPane")).defineEnum("lastLeftPane", clientDefaults.lastLeftPane());
         c.pop();
 
         section(c, "partyHud", "Party member frames (also changeable in the party GUI).");
@@ -308,6 +318,15 @@ public final class ForgeSoulsVaultConfig {
         PARTY_HUD_SCALE = c.translation(key("partyHud.scale")).defineInRange("scale", clientDefaults.partyHudScale(), 0.5D, 2.0D);
         PARTY_HUD_FULL_ROWS = c.comment("Teammates shown in the chosen style; any more use compact one-line rows.")
                 .translation(key("partyHud.fullRows")).defineInRange("fullRows", clientDefaults.partyHudFullRows(), 0, 12);
+        PARTY_PORTRAIT = c.comment("MODEL (static 3D model with skin, armor and held weapons) or FACE.")
+                .translation(key("partyHud.portrait")).defineEnum("portrait", clientDefaults.partyPortrait());
+        PARTY_HUNGER = c.comment("Hunger bar in party frames: AUTO (hidden when HungerStrike removes hunger), SHOW or HIDE.")
+                .translation(key("partyHud.hunger")).defineEnum("hunger", clientDefaults.partyHunger());
+        PARTY_MARKERS = c.comment("Show party members' heads, names and distance in the world (through walls).")
+                .translation(key("partyHud.markers")).define("markers", clientDefaults.partyMarkers());
+        PARTY_MARKER_MIN_DISTANCE = c.comment("Hide a member's marker when they are closer than this many blocks.")
+                .translation(key("partyHud.markerMinDistance"))
+                .defineInRange("markerMinDistance", clientDefaults.partyMarkerMinDistance(), 0, 256);
         c.pop();
 
         CLIENT_SPEC = c.build();
@@ -390,11 +409,16 @@ public final class ForgeSoulsVaultConfig {
                 REMEMBER_LAST_TAB.get(),
                 LAST_CATEGORY.get(),
                 LAST_SORT.get(),
+                LAST_LEFT_PANE.get(),
                 PARTY_HUD_VISIBLE.get(),
                 PARTY_HUD_STYLE.get(),
                 PARTY_HUD_ANCHOR.get(),
                 PARTY_HUD_SCALE.get(),
-                PARTY_HUD_FULL_ROWS.get()
+                PARTY_HUD_FULL_ROWS.get(),
+                PARTY_PORTRAIT.get(),
+                PARTY_HUNGER.get(),
+                PARTY_MARKERS.get(),
+                PARTY_MARKER_MIN_DISTANCE.get()
         );
     }
 
@@ -406,6 +430,21 @@ public final class ForgeSoulsVaultConfig {
         public void rememberTab(VaultCategory category, VaultSortMode sortMode) {
             LAST_CATEGORY.set(category);
             LAST_SORT.set(sortMode);
+            CLIENT_SPEC.save();
+            SoulsVaultClientConfig.apply(readClient(), null);
+        }
+
+        @Override
+        public void rememberLeftPane(LeftPaneMode mode) {
+            LAST_LEFT_PANE.set(mode);
+            CLIENT_SPEC.save();
+            SoulsVaultClientConfig.apply(readClient(), null);
+        }
+
+        @Override
+        public void setPartyVisuals(PortraitMode portrait, boolean markers) {
+            PARTY_PORTRAIT.set(portrait);
+            PARTY_MARKERS.set(markers);
             CLIENT_SPEC.save();
             SoulsVaultClientConfig.apply(readClient(), null);
         }
