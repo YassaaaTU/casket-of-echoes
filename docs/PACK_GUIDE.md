@@ -77,8 +77,11 @@ while they move and not at all while everyone stands still.
 The highest-priority profile matching a block wins. `vault_access`, `replenish` and `echo_swap` decide whether a
 Casket opened there counts as "at a Rest Point" for each action (otherwise the remote rules and
 `restPoints.*RequiresRestPoint` apply). The resting effects run on Shift + right-click, unless combat-locked.
-Defaults shipped: campfires (must be lit) and the Bottomless Casket. Blocks in `#soulsvault:rest_points` with no
-profile get all three powers and no effects.
+Defaults shipped: campfires (must be lit) and the Bottomless Casket. Blocks in `#soulsvault:rest_points` that no
+profile describes get all three powers and no effects; a block a profile describes follows its profiles only, so an
+unlit campfire is not a Rest Point even though campfires are in the tag. A Casket opened at a Rest Point keeps these
+powers while the player stays within reach and the block stays a Rest Point: walking away or putting the fire out
+switches the session to the remote rules.
 
 **Replenish caps** (Estus-style): `data/<ns>/soulsvault/replenish_caps/<name>.json`
 

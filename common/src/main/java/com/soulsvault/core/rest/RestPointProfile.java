@@ -65,12 +65,9 @@ public record RestPointProfile(
     }
 
     /**
-     * Whether this profile covers {@code state} (and, for {@code requiresLit}, it is lit).
+     * Whether this profile describes {@code state}'s block (listed directly or through a tag), lit or not.
      */
-    public boolean matches(BlockState state) {
-        if (this.requiresLit && state.hasProperty(BlockStateProperties.LIT) && !state.getValue(BlockStateProperties.LIT)) {
-            return false;
-        }
+    public boolean covers(BlockState state) {
         if (this.blocks.contains(state.getBlock())) {
             return true;
         }
@@ -80,5 +77,13 @@ public record RestPointProfile(
             }
         }
         return false;
+    }
+
+    /**
+     * Whether {@code state} works as this profile's Rest Point right now: covered and, for {@code requiresLit}, lit.
+     */
+    public boolean matches(BlockState state) {
+        return covers(state) && (!this.requiresLit || !state.hasProperty(BlockStateProperties.LIT)
+                || state.getValue(BlockStateProperties.LIT));
     }
 }

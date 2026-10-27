@@ -51,8 +51,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *   "clear_harmful_effects": true
  * }
  * }</pre>
- * Any block in {@code #soulsvault:rest_points} without a matching profile still works as a plain Rest Point
- * (all three session powers, no resting effects), so the tag alone stays enough for simple packs.
+ * Any block in {@code #soulsvault:rest_points} that no profile describes still works as a plain Rest Point
+ * (all three session powers, no resting effects), so the tag alone stays enough for simple packs. A block a profile
+ * does describe follows that profile, so an unlit campfire under a {@code requires_lit} profile is not a Rest Point.
  */
 public final class RestPointProfiles {
     public static final String DIRECTORY = "soulsvault/rest_points";
@@ -99,12 +100,16 @@ public final class RestPointProfiles {
     }
 
     private static Optional<RestPointProfile> compute(BlockState state) {
+        boolean covered = false;
         for (RestPointProfile profile : profiles) {
             if (profile.matches(state)) {
                 return Optional.of(profile);
             }
+            covered |= profile.covers(state);
         }
-        return state.is(Constants.REST_POINTS_TAG) ? Optional.of(TAGGED_DEFAULT) : Optional.empty();
+        // The tag's plain Rest Point is only for blocks no profile describes: a block whose profiles all reject it
+        // (an unlit campfire) is not a Rest Point, even though campfires are in the tag
+        return !covered && state.is(Constants.REST_POINTS_TAG) ? Optional.of(TAGGED_DEFAULT) : Optional.empty();
     }
 
     /**
