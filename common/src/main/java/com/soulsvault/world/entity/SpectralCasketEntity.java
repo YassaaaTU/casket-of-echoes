@@ -1,8 +1,10 @@
 package com.soulsvault.world.entity;
 
 import com.soulsvault.config.SoulsVaultConfig;
+import com.soulsvault.core.rest.RestPointProfile;
 import com.soulsvault.core.rest.RestPointProfiles;
 import com.soulsvault.world.block.BottomlessCasketBlock;
+import com.soulsvault.world.inventory.CasketAnchor;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
@@ -27,8 +29,9 @@ import javax.annotation.Nullable;
 import java.util.UUID;
 
 /**
- * Temporary 60-second spectral vault entity summoned by a {@link com.soulsvault.world.item.VestigeMothItem}.
- * Allows players to perform Rest & Replenish and access their Casket of Echoes before a boss arena.
+ * Temporary spectral vault entity summoned by a {@link com.soulsvault.world.item.VestigeMothItem} (lifetime from
+ * {@code fieldAccess.spectralCasketLifetimeSeconds}). Any player may rest and open their own Casket at it, e.g.
+ * before a boss arena; sessions opened here lose their Rest Point powers once it fades.
  */
 public class SpectralCasketEntity extends Entity {
     private static final String NBT_REMAINING_TICKS = "RemainingTicks";
@@ -119,7 +122,9 @@ public class SpectralCasketEntity extends Entity {
             return InteractionResult.PASS;
         }
         if (!this.level().isClientSide && player instanceof ServerPlayer serverPlayer) {
-            BottomlessCasketBlock.openCasketForPlayer(serverPlayer, this.blockPosition(), RestPointProfiles.SPECTRAL_CASKET);
+            RestPointProfile profile = RestPointProfiles.SPECTRAL_CASKET;
+            BottomlessCasketBlock.openCasketForPlayer(serverPlayer, this.blockPosition(), profile,
+                    CasketAnchor.atEntity(this, RestPointProfiles.reachOf(profile)));
         }
         return InteractionResult.sidedSuccess(this.level().isClientSide);
     }

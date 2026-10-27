@@ -6,10 +6,12 @@ import com.soulsvault.core.EquipLoad;
 import com.soulsvault.core.PlayerVaultData;
 import com.soulsvault.core.ReplenishCaps;
 import com.soulsvault.core.VaultAccess;
+import com.soulsvault.core.VaultCategory;
 import com.soulsvault.core.VaultSync;
 import com.soulsvault.core.rest.RestPointProfile;
 import com.soulsvault.core.rest.RestPointProfiles;
 import com.soulsvault.forge.network.ForgeNetworkHandler;
+import com.soulsvault.network.RequestThrottle;
 import com.soulsvault.party.CovenantService;
 import com.soulsvault.party.PartyCommands;
 import com.soulsvault.party.PartyService;
@@ -44,6 +46,7 @@ import net.minecraftforge.event.entity.player.EntityItemPickupEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.entity.player.PlayerWakeUpEvent;
+import net.minecraftforge.event.server.ServerStoppedEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
 
 import javax.annotation.Nullable;
@@ -75,6 +78,7 @@ public final class ForgeServerEvents {
         MinecraftForge.EVENT_BUS.addListener(ForgeServerEvents::onEquipmentChange);
         MinecraftForge.EVENT_BUS.addListener(ForgeServerEvents::onPlayerTick);
         MinecraftForge.EVENT_BUS.addListener(ForgeServerEvents::onServerTick);
+        MinecraftForge.EVENT_BUS.addListener(ForgeServerEvents::onServerStopped);
         MinecraftForge.EVENT_BUS.addListener(ForgeServerEvents::onAddReloadListeners);
         MinecraftForge.EVENT_BUS.addListener(ForgeServerEvents::onRegisterCommands);
     }
@@ -93,7 +97,11 @@ public final class ForgeServerEvents {
         }
     }
 
+    /**
+     * Drops the player's per-session state (sync bookkeeping, combat timer, request cooldowns, party caches).
+     */
     private static void onPlayerLoggedOut(final PlayerEvent.PlayerLoggedOutEvent event) {
+        RequestThrottle.forget(event.getEntity().getUUID());
         VaultSync.forget(event.getEntity().getUUID());
         VaultAccess.forget(event.getEntity().getUUID());
         EquipLoad.forget(event.getEntity().getUUID());
@@ -288,6 +296,14 @@ public final class ForgeServerEvents {
             PartyService.tick(event.getServer());
             CovenantService.reconcile(event.getServer());
         }
+    }
+
+    /**
+     * Static caches outlive an integrated server; clear them so the next singleplayer world starts fresh.
+     */
+    private static void onServerStopped(final ServerStoppedEvent event) {
+        PartyService.invalidate();
+        VaultCategory.clearCache();
     }
 
     private static void onAddReloadListeners(final AddReloadListenerEvent event) {

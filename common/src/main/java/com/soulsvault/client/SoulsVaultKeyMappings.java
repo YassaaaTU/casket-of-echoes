@@ -69,10 +69,16 @@ public final class SoulsVaultKeyMappings {
         mouseMatcher = mouse != null ? mouse : KeyMapping::matchesMouse;
     }
 
+    /**
+     * Whether a key press triggers {@code mapping} (unbound mappings never match).
+     */
     public static boolean matchesKey(KeyMapping mapping, int keyCode, int scanCode) {
         return !mapping.isUnbound() && keyMatcher.matches(mapping, keyCode, scanCode);
     }
 
+    /**
+     * Whether a mouse click triggers {@code mapping} (unbound mappings never match).
+     */
     public static boolean matchesMouse(KeyMapping mapping, int button) {
         return !mapping.isUnbound() && mouseMatcher.matches(mapping, button);
     }
@@ -94,7 +100,7 @@ public final class SoulsVaultKeyMappings {
     public static void tickWorldKeys(Minecraft mc) {
         while (OPEN_CASKET.consumeClick()) {
             if (mc.player != null && mc.screen == null && !mc.player.isSpectator()) {
-                Services.PLATFORM.sendToServer(PacketC2SOpenVault.openFromKeybind());
+                Services.PLATFORM.sendToServer(PacketC2SOpenVault.request());
             }
         }
         while (OPEN_PARTY.consumeClick()) {
@@ -107,11 +113,17 @@ public final class SoulsVaultKeyMappings {
         }
     }
 
+    /**
+     * Loader-specific keyboard matching (conflict context, modifiers).
+     */
     @FunctionalInterface
     public interface KeyMatcher {
         boolean matches(KeyMapping mapping, int keyCode, int scanCode);
     }
 
+    /**
+     * Loader-specific mouse button matching (conflict context, modifiers).
+     */
     @FunctionalInterface
     public interface MouseMatcher {
         boolean matches(KeyMapping mapping, int button);

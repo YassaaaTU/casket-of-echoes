@@ -28,6 +28,7 @@ import com.soulsvault.forge.network.ForgeNetworkHandler;
 import com.soulsvault.forge.registry.ForgeModBlocks;
 import com.soulsvault.platform.services.IPlatformHelper;
 import com.soulsvault.world.entity.SpectralCasketEntity;
+import com.soulsvault.world.inventory.CasketAnchor;
 import com.soulsvault.world.inventory.SoulsVaultMenu;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -52,6 +53,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * Forge implementation of {@link IPlatformHelper}, loaded through
+ * {@code META-INF/services/com.soulsvault.platform.services.IPlatformHelper}.
+ */
 public class ForgePlatformHelper implements IPlatformHelper {
 
     @Override
@@ -132,13 +137,13 @@ public class ForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
-    public void openVaultMenu(ServerPlayer player, RestPointProfile.Grants grants) {
+    public void openVaultMenu(ServerPlayer player, RestPointProfile.Grants grants, @Nullable CasketAnchor anchor) {
         PlayerVaultData vaultData = getPlayerVaultData(player);
         syncFullVaultToClient(player, vaultData);
         NetworkHooks.openScreen(
                 player,
                 new SimpleMenuProvider(
-                        (containerId, playerInventory, p) -> new SoulsVaultMenu(containerId, playerInventory, grants),
+                        (containerId, playerInventory, p) -> new SoulsVaultMenu(containerId, playerInventory, grants, anchor),
                         Component.translatable("gui.soulsvault.title")
                 ),
                 grants::encode

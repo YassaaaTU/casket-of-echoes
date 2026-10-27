@@ -59,6 +59,18 @@ public final class ClientVaultCache {
         };
     }
 
+    /**
+     * Forgets everything the last server synced (on disconnect), so the next world starts from an empty mirror.
+     */
+    public static void reset() {
+        CLIENT_VAULT.replaceAllFromSync(List.of(), List.of(), null);
+        CLIENT_KEEPSAKES.setFromSync(false, false, List.of());
+        equipLoad = EquipLoad.Result.NONE;
+    }
+
+    /**
+     * Starts delivering sync and delta notifications to {@code listener} (an open Casket screen).
+     */
     public static void registerChangeListener(ChangeListener listener) {
         if (listener != null) {
             CHANGE_LISTENERS.add(listener);
@@ -69,12 +81,19 @@ public final class ClientVaultCache {
         CHANGE_LISTENERS.remove(listener);
     }
 
+    /**
+     * Receives every overflow / replenish notification (the HUD banner).
+     */
     public static void registerToastListener(Consumer<OverflowToastEvent> listener) {
         if (listener != null) {
             TOAST_LISTENERS.add(listener);
         }
     }
 
+    /**
+     * Applies one chunk of a full sync: chunk 0 replaces the mirror (and refreshes an open Casket screen), later
+     * chunks append entries.
+     */
     public static void handleSyncChunk(
             int chunkIndex,
             int totalChunks,
@@ -93,6 +112,9 @@ public final class ClientVaultCache {
         }
     }
 
+    /**
+     * Applies a single-entry update and notifies listeners with the resulting entry.
+     */
     public static void handleDelta(ItemKey key, @Nullable VaultEntry updatedEntry) {
         CLIENT_VAULT.applyDelta(key, updatedEntry);
         VaultEntry current = CLIENT_VAULT.getEntry(key);
@@ -105,6 +127,9 @@ public final class ClientVaultCache {
         return CLIENT_KEEPSAKES;
     }
 
+    /**
+     * Notified whenever the Keepsakes mirror changes.
+     */
     public static void registerKeepsakeListener(Runnable listener) {
         if (listener != null) {
             KEEPSAKE_LISTENERS.add(listener);
@@ -115,6 +140,9 @@ public final class ClientVaultCache {
         KEEPSAKE_LISTENERS.remove(listener);
     }
 
+    /**
+     * Replaces the Keepsakes mirror with what the server sent.
+     */
     public static void handleKeepsakes(boolean unlocked, boolean upgraded, List<VaultEntry> entries) {
         CLIENT_KEEPSAKES.setFromSync(unlocked, upgraded, entries);
         for (Runnable listener : KEEPSAKE_LISTENERS) {
@@ -126,6 +154,9 @@ public final class ClientVaultCache {
         equipLoad = new EquipLoad.Result(load, capacity);
     }
 
+    /**
+     * Forwards a server overflow / replenish notification to the toast listeners.
+     */
     public static void handleOverflowToast(ItemStack displayStack, int count, boolean isReplenish) {
         OverflowToastEvent event = new OverflowToastEvent(displayStack.copy(), count, isReplenish, System.currentTimeMillis());
         for (Consumer<OverflowToastEvent> listener : TOAST_LISTENERS) {
@@ -133,6 +164,9 @@ public final class ClientVaultCache {
         }
     }
 
+    /**
+     * A pickup-overflow or replenish notification for the HUD banner.
+     */
     public record OverflowToastEvent(
             ItemStack displayStack,
             int count,

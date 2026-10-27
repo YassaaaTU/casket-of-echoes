@@ -6,17 +6,19 @@ import com.soulsvault.config.SoulsVaultConfig;
 import com.soulsvault.config.SoulsVaultConfig.PartyProviderType;
 import com.soulsvault.core.ItemKey;
 import com.soulsvault.core.PlayerVaultData;
+import com.soulsvault.core.RegistryLookups;
 import com.soulsvault.core.VaultStorage;
 import com.soulsvault.core.VaultSync;
 import com.soulsvault.network.PacketC2SPartyAction;
 import com.soulsvault.network.PacketS2CPartySync;
+import com.soulsvault.network.RequestThrottle;
 import com.soulsvault.party.provider.BuiltinPartyProvider;
 import com.soulsvault.party.provider.FtbTeamsPartyProvider;
 import com.soulsvault.party.provider.OpacPartyProvider;
 import com.soulsvault.party.provider.VanillaTeamPartyProvider;
 import com.soulsvault.platform.Services;
 import net.minecraft.ChatFormatting;
-import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.SharedConstants;
 import net.minecraft.advancements.Advancement;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
@@ -72,6 +74,9 @@ public final class PartyService {
 
     // ------------------------------------------------------------------------------------------------ lookup
 
+    /**
+     * The persistent party registry of this world.
+     */
     public static PartyRegistry registry(MinecraftServer server) {
         return Services.PLATFORM.getPartyRegistry(server);
     }
@@ -108,6 +113,9 @@ public final class PartyService {
         return null;
     }
 
+    /**
+     * Whether built-in parties are the active provider (so the GUI may create, invite and kick).
+     */
     public static boolean builtinActive() {
         PartyProvider provider = activeProvider();
         return provider != null && provider.type() == PartyProviderType.BUILTIN;
@@ -133,11 +141,17 @@ public final class PartyService {
         return view;
     }
 
+    /**
+     * Drops cached party lookups and forces a party HUD resync, after any membership or option change.
+     */
     public static synchronized void invalidate() {
         VIEW_CACHE.clear();
         LAST_SYNC_HASH.clear();
     }
 
+    /**
+     * Whether the party uses a shared Covenant Casket (leader option resolved against the server rule).
+     */
     public static boolean sharesCasket(PartyView party) {
         return SoulsVaultConfig.party().sharedCasket().resolve(party.settings().sharedCasket());
     }
@@ -152,23 +166,39 @@ public final class PartyService {
         return party != null && sharesCasket(party) && CovenantService.isMember(server, party, player) ? party.storageId() : null;
     }
 
+    /**
+     * Name of the player's party, or {@code null}.
+     */
     @Nullable
     public static String sharedPartyName(MinecraftServer server, UUID player) {
         PartyView party = getParty(server, player);
         return party != null ? party.name() : null;
     }
 
+    /**
+     * Whether the player may change the party's options: its leader, or an operator when the provider has none.
+     */
     public static boolean canManage(ServerPlayer player, PartyView party) {
         return party.leader() != null ? party.isLeader(player.getUUID()) : player.hasPermissions(2);
     }
 
+    /**
+     * Whether the player may invite into a built-in party.
+     */
     public static boolean canInvite(ServerPlayer player, PartyView party) {
         return party.isBuiltin() && (party.isLeader(player.getUUID()) || party.settings().membersCanInvite());
     }
 
     // ------------------------------------------------------------------------------------------------ actions
 
+    /**
+     * Runs a party GUI request; every action re-checks permissions and state, and errors are sent to the player.
+     */
     public static void handleAction(ServerPlayer player, PacketC2SPartyAction packet) {
+        if (packet.getAction() == PacketC2SPartyAction.Action.INVITE
+                && !RequestThrottle.tryAcquire(player, RequestThrottle.Kind.PARTY_INVITE)) {
+            return;
+        }
         Component error = switch (packet.getAction()) {
             case CREATE -> createParty(player);
             case INVITE -> invite(player, packet.getText(), packet.getPolicy());
@@ -190,6 +220,11 @@ public final class PartyService {
         forceSync(player);
     }
 
+    /**
+     * Creates a built-in party led by the player, then starts their casket choice if it shares a Casket.
+     *
+     * @return why it failed, or {@code null}
+     */
     @Nullable
     public static Component createParty(ServerPlayer leader) {
         if (!builtinActive()) {
@@ -229,6 +264,11 @@ public final class PartyService {
         return CovenantService.join(player, party, policy, confirmedOverride);
     }
 
+    /**
+     * Invites an online player into the inviter's built-in party (creating one if needed).
+     *
+     * @return why it failed, or {@code null}
+     */
     @Nullable
     public static Component invite(ServerPlayer inviter, String targetName, CasketJoinPolicy policy) {
         if (!builtinActive()) {
@@ -304,6 +344,11 @@ public final class PartyService {
         return null;
     }
 
+    /**
+     * Joins the party behind an invite, applying the chosen casket policy when it shares a Casket.
+     *
+     * @return why it failed, or {@code null}
+     */
     @Nullable
     public static Component accept(ServerPlayer invitee, UUID partyId, CasketJoinPolicy chosen, boolean confirmedOverride) {
         if (!builtinActive()) {
@@ -362,6 +407,11 @@ public final class PartyService {
         return null;
     }
 
+    /**
+     * Declines an invite and tells the inviter.
+     *
+     * @return always {@code null}
+     */
     @Nullable
     public static Component decline(ServerPlayer invitee, UUID partyId) {
         PartyRegistry registry = registry(invitee.server);
@@ -376,6 +426,11 @@ public final class PartyService {
         return null;
     }
 
+    /**
+     * Leaves the player's built-in party; their Covenant items are handled per {@code returnContributionsOnLeave}.
+     *
+     * @return why it failed, or {@code null}
+     */
     @Nullable
     public static Component leave(ServerPlayer player) {
         MinecraftServer server = player.server;
@@ -401,6 +456,11 @@ public final class PartyService {
         return null;
     }
 
+    /**
+     * Removes a member from the leader's built-in party.
+     *
+     * @return why it failed, or {@code null}
+     */
     @Nullable
     public static Component kick(ServerPlayer leader, UUID target) {
         MinecraftServer server = leader.server;
@@ -430,6 +490,11 @@ public final class PartyService {
         return null;
     }
 
+    /**
+     * Makes another member the leader of the built-in party.
+     *
+     * @return why it failed, or {@code null}
+     */
     @Nullable
     public static Component transferLeadership(ServerPlayer leader, UUID target) {
         PartyRegistry registry = registry(leader.server);
@@ -446,6 +511,11 @@ public final class PartyService {
         return null;
     }
 
+    /**
+     * Disbands the leader's built-in party; its Covenant dissolves and everyone gets their items back.
+     *
+     * @return why it failed, or {@code null}
+     */
     @Nullable
     public static Component disband(ServerPlayer leader) {
         MinecraftServer server = leader.server;
@@ -468,6 +538,11 @@ public final class PartyService {
         return null;
     }
 
+    /**
+     * Saves leader options (and the name of a built-in party); turning sharing off dissolves the Covenant.
+     *
+     * @return why it failed, or {@code null}
+     */
     @Nullable
     public static Component saveSettings(ServerPlayer manager, String requestedName, PartySettings settings) {
         MinecraftServer server = manager.server;
@@ -484,7 +559,8 @@ public final class PartyService {
             if (builtin == null) {
                 return Component.translatable("gui.soulsvault.party.error.generic");
             }
-            String name = truncate(requestedName.trim().isEmpty() ? builtin.getName() : stripFormatting(requestedName.trim()));
+            String cleaned = stripFormatting(requestedName).trim();
+            String name = truncate(cleaned.isEmpty() ? builtin.getName() : cleaned);
             registry.update(builtin, name, settings);
         } else {
             registry.setExternalSettings(party.key(), settings);
@@ -514,6 +590,11 @@ public final class PartyService {
         return null;
     }
 
+    /**
+     * Moves what fits from the player's set-aside private Casket into the Covenant.
+     *
+     * @return why it failed, or {@code null}
+     */
     @Nullable
     public static Component mergePrivateCasket(ServerPlayer player) {
         MinecraftServer server = player.server;
@@ -542,6 +623,9 @@ public final class PartyService {
      * Result of merging a private Casket into a shared one.
      */
     public record MergeResult(long moved, long leftOver) {
+        /**
+         * Chat summary of the merge.
+         */
         public Component describe(Component who) {
             return this.leftOver > 0L
                     ? Component.translatable("gui.soulsvault.party.merge.partial", who, this.moved, this.leftOver)
@@ -615,6 +699,9 @@ public final class PartyService {
         return null;
     }
 
+    /**
+     * Records that the player just took damage (party HUD flash).
+     */
     public static void markHurt(ServerPlayer player) {
         LAST_HURT_TICK.put(player.getUUID(), player.server.getTickCount());
     }
@@ -643,11 +730,17 @@ public final class PartyService {
 
     // ------------------------------------------------------------------------------------------------ HUD sync
 
+    /**
+     * Makes the next HUD tick resend the player's party state, equipment and positions.
+     */
     public static void forceSync(ServerPlayer player) {
         LAST_SYNC_HASH.remove(player.getUUID());
         PartyPresence.forget(player.getUUID());
     }
 
+    /**
+     * Drops the player's HUD sync state (on logout).
+     */
     public static void forget(UUID playerId) {
         LAST_SYNC_HASH.remove(playerId);
         LAST_HURT_TICK.remove(playerId);
@@ -732,7 +825,7 @@ public final class PartyService {
             if (!instance.showIcon()) {
                 continue;
             }
-            ResourceLocation id = BuiltInRegistries.MOB_EFFECT.getKey(instance.getEffect());
+            ResourceLocation id = RegistryLookups.mobEffectId(instance.getEffect());
             if (id == null) {
                 continue;
             }
@@ -750,6 +843,9 @@ public final class PartyService {
         return Math.round(value * 2.0F) / 2.0F;
     }
 
+    /**
+     * The "[Party]" chat prefix.
+     */
     public static MutableComponent prefix() {
         return Component.translatable("gui.soulsvault.party.prefix").withStyle(ChatFormatting.GOLD).append(" ");
     }
@@ -765,6 +861,9 @@ public final class PartyService {
         return online;
     }
 
+    /**
+     * A player's name from the online list or the profile cache (never a network lookup), else a short id.
+     */
     public static String nameOf(MinecraftServer server, UUID id) {
         ServerPlayer online = server.getPlayerList().getPlayer(id);
         if (online != null) {
@@ -783,8 +882,11 @@ public final class PartyService {
         return name.length() > MAX_NAME_LENGTH ? name.substring(0, MAX_NAME_LENGTH) : name;
     }
 
+    /**
+     * Removes formatting codes and characters chat does not allow (newlines, control characters).
+     */
     private static String stripFormatting(String name) {
         String stripped = ChatFormatting.stripFormatting(name);
-        return stripped != null ? stripped : "";
+        return stripped != null ? SharedConstants.filterText(stripped) : "";
     }
 }

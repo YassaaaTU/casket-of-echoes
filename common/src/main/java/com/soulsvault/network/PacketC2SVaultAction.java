@@ -15,6 +15,8 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.List;
@@ -23,11 +25,20 @@ import java.util.Set;
 
 /**
  * Client-to-Server packet for all vault mutations, cursor transfers, and crafting grid actions.
+ * <p>
+ * Every action requires the Casket menu to be open and is re-validated on the server: item keys only name what to
+ * move (counts come from the server's own inventory and Vault state), amounts are clamped, and Vault access is
+ * checked with the current rules before anything moves.
  */
 public final class PacketC2SVaultAction {
-    public static final int FLAG_AUTO_REFILL = 1;
-    public static final int FLAG_OVERFLOW_DEPOSIT = 1 << 1;
+    private static final int FLAG_AUTO_REFILL = 1;
+    private static final int FLAG_OVERFLOW_DEPOSIT = 1 << 1;
+    /** {@code extraData} value asking a carried-stack deposit to move a single item. */
+    private static final int SINGLE_ITEM = 1;
 
+    /**
+     * Every Casket request; {@code key}, {@code amount} and {@code extraData} mean what the matching factory says.
+     */
     public enum ActionType {
         DEPOSIT,
         WITHDRAW,
@@ -52,25 +63,29 @@ public final class PacketC2SVaultAction {
     private final long amount;
     private final int extraData;
 
-    public PacketC2SVaultAction(ActionType action, ItemKey key, long amount, int extraData) {
+    private PacketC2SVaultAction(ActionType action, ItemKey key, long amount, int extraData) {
         this.action = Objects.requireNonNull(action, "action cannot be null");
         this.key = Objects.requireNonNullElse(key, ItemKey.EMPTY);
         this.amount = amount;
         this.extraData = extraData;
     }
 
+    /** Moves up to {@code amount} of {@code key} from the player's main inventory into the Vault. */
     public static PacketC2SVaultAction deposit(ItemKey key, long amount) {
         return new PacketC2SVaultAction(ActionType.DEPOSIT, key, amount, 0);
     }
 
+    /** Moves up to {@code amount} of {@code key} from the Vault into the player's main inventory. */
     public static PacketC2SVaultAction withdraw(ItemKey key, long amount) {
         return new PacketC2SVaultAction(ActionType.WITHDRAW, key, amount, 0);
     }
 
+    /** Stores the stack on the cursor (or one item of it). */
     public static PacketC2SVaultAction depositCarried(boolean singleItemOnly) {
-        return new PacketC2SVaultAction(ActionType.DEPOSIT_CARRIED, ItemKey.EMPTY, singleItemOnly ? 1L : 64L, singleItemOnly ? 1 : 0);
+        return new PacketC2SVaultAction(ActionType.DEPOSIT_CARRIED, ItemKey.EMPTY, 0L, singleItemOnly ? SINGLE_ITEM : 0);
     }
 
+    /** Takes up to {@code amount} of {@code key} onto the cursor (merging with a matching carried stack). */
     public static PacketC2SVaultAction pickupToCursor(ItemKey key, int amount) {
         return new PacketC2SVaultAction(ActionType.PICKUP_TO_CURSOR, key, Math.max(1, amount), 0);
     }
@@ -79,6 +94,7 @@ public final class PacketC2SVaultAction {
         return new PacketC2SVaultAction(ActionType.CLEAR_CRAFTING_GRID, ItemKey.EMPTY, 0L, 0);
     }
 
+    /** Deposits every main-inventory item of {@code category}, keeping favorites and refill targets. */
     public static PacketC2SVaultAction depositAllCategory(VaultCategory category) {
         return new PacketC2SVaultAction(ActionType.DEPOSIT_ALL_CATEGORY, ItemKey.EMPTY, 0L, category.ordinal());
     }
@@ -109,6 +125,7 @@ public final class PacketC2SVaultAction {
         return new PacketC2SVaultAction(ActionType.LOAD_BUILD_ECHO, ItemKey.EMPTY, 0L, echoIndex);
     }
 
+    /** Pays the remote access cost for the rest of this Casket session. */
     public static PacketC2SVaultAction unlockRemoteAccess() {
         return new PacketC2SVaultAction(ActionType.UNLOCK_REMOTE, ItemKey.EMPTY, 0L, 0);
     }
@@ -118,7 +135,7 @@ public final class PacketC2SVaultAction {
     }
 
     public static PacketC2SVaultAction keepsakeDepositCarried(boolean singleItemOnly) {
-        return new PacketC2SVaultAction(ActionType.KEEPSAKE_DEPOSIT_CARRIED, ItemKey.EMPTY, 0L, singleItemOnly ? 1 : 0);
+        return new PacketC2SVaultAction(ActionType.KEEPSAKE_DEPOSIT_CARRIED, ItemKey.EMPTY, 0L, singleItemOnly ? SINGLE_ITEM : 0);
     }
 
     public static PacketC2SVaultAction keepsakePickup(ItemKey key, int amount) {
@@ -127,22 +144,6 @@ public final class PacketC2SVaultAction {
 
     public static PacketC2SVaultAction keepsakeWithdraw(ItemKey key, int amount) {
         return new PacketC2SVaultAction(ActionType.KEEPSAKE_WITHDRAW, key, Math.max(1, amount), 0);
-    }
-
-    public ActionType getAction() {
-        return this.action;
-    }
-
-    public ItemKey getKey() {
-        return this.key;
-    }
-
-    public long getAmount() {
-        return this.amount;
-    }
-
-    public int getExtraData() {
-        return this.extraData;
     }
 
     public void encode(FriendlyByteBuf buf) {
@@ -169,6 +170,7 @@ public final class PacketC2SVaultAction {
         if (!(player.containerMenu instanceof SoulsVaultMenu vaultMenu)) {
             return;
         }
+        vaultMenu.refreshAccessState(player);
         PlayerVaultData vaultData = Services.PLATFORM.getPlayerVaultData(player);
 
         // Actions that never move items between the player and the Vault are always allowed.
@@ -178,14 +180,14 @@ public final class PacketC2SVaultAction {
                 return;
             }
             case TOGGLE_FAVORITE -> {
-                if (!this.key.isEmpty()) {
+                if (mayConfigure(player, vaultData)) {
                     vaultData.toggleFavorite(this.key);
                     VaultSync.commitPrefs(player, this.key);
                 }
                 return;
             }
             case SET_REFILL_TARGET -> {
-                if (!this.key.isEmpty()) {
+                if (mayConfigure(player, vaultData)) {
                     boolean autoRefill = (this.extraData & FLAG_AUTO_REFILL) != 0;
                     boolean overflowDeposit = (this.extraData & FLAG_OVERFLOW_DEPOSIT) != 0;
                     int target = (int) Math.max(1L, Math.min(Integer.MAX_VALUE, this.amount));
@@ -198,8 +200,10 @@ public final class PacketC2SVaultAction {
                 return;
             }
             case SAVE_BUILD_ECHO -> {
-                vaultData.saveBuildEcho(player, this.extraData);
-                Services.PLATFORM.syncFullVaultToClient(player, vaultData);
+                if (RequestThrottle.tryAcquire(player, RequestThrottle.Kind.ECHO_UPDATE)) {
+                    vaultData.saveBuildEcho(player, this.extraData);
+                    Services.PLATFORM.syncFullVaultToClient(player, vaultData);
+                }
                 return;
             }
             case UNLOCK_REMOTE -> {
@@ -239,48 +243,8 @@ public final class PacketC2SVaultAction {
                     VaultSync.commit(player, List.of(this.key));
                 }
             }
-            case DEPOSIT_CARRIED -> {
-                ItemStack carried = player.containerMenu.getCarried();
-                if (!carried.isEmpty()) {
-                    ItemKey carriedKey = ItemKey.fromStack(carried);
-                    int toDeposit = this.extraData == 1 ? 1 : carried.getCount();
-                    long accepted = vaultData.deposit(carriedKey, toDeposit);
-                    if (accepted > 0L) {
-                        carried.shrink((int) accepted);
-                        player.containerMenu.setCarried(carried.isEmpty() ? ItemStack.EMPTY : carried);
-                        player.containerMenu.broadcastChanges();
-                        VaultSync.commit(player, List.of(carriedKey));
-                    } else {
-                        reportRejected(player, carriedKey);
-                    }
-                }
-            }
-            case PICKUP_TO_CURSOR -> {
-                if (this.key.isEmpty()) {
-                    return;
-                }
-                ItemStack carried = player.containerMenu.getCarried();
-                int maxStack = Math.max(1, this.key.getItem().getMaxStackSize());
-                if (carried.isEmpty()) {
-                    int request = (int) Math.min(maxStack, Math.max(1L, this.amount));
-                    long withdrawn = vaultData.withdraw(this.key, request);
-                    if (withdrawn > 0L) {
-                        player.containerMenu.setCarried(this.key.toStack((int) withdrawn));
-                        player.containerMenu.broadcastChanges();
-                        VaultSync.commit(player, List.of(this.key));
-                    }
-                } else if (this.key.matches(carried) && carried.getCount() < maxStack) {
-                    int space = maxStack - carried.getCount();
-                    int request = (int) Math.min(space, Math.max(1L, this.amount));
-                    long withdrawn = vaultData.withdraw(this.key, request);
-                    if (withdrawn > 0L) {
-                        carried.grow((int) withdrawn);
-                        player.containerMenu.setCarried(carried);
-                        player.containerMenu.broadcastChanges();
-                        VaultSync.commit(player, List.of(this.key));
-                    }
-                }
-            }
+            case DEPOSIT_CARRIED -> depositCarried(player, vaultData);
+            case PICKUP_TO_CURSOR -> pickupToCursor(player, vaultData);
             case DEPOSIT_ALL_CATEGORY -> {
                 VaultCategory[] categories = VaultCategory.values();
                 if (this.extraData >= 0 && this.extraData < categories.length) {
@@ -300,6 +264,80 @@ public final class PacketC2SVaultAction {
     }
 
     /**
+     * Pins and refill settings may only be created for items the player stores or has in the Casket screen (and the
+     * Vault would accept), so a modified client cannot fill their save with settings for arbitrary items; existing
+     * settings can always be changed or cleared.
+     */
+    private boolean mayConfigure(ServerPlayer player, PlayerVaultData vaultData) {
+        if (this.key.isEmpty()) {
+            return false;
+        }
+        if (vaultData.hasPrefs(this.key)) {
+            return true;
+        }
+        return (vaultData.getCount(this.key) > 0L || showsInMenu(player.containerMenu, this.key)) && VaultRules.canStore(this.key);
+    }
+
+    /**
+     * Whether the item is anywhere the Casket screen shows it: inventory, gear, accessories, the grid or the cursor.
+     */
+    private static boolean showsInMenu(AbstractContainerMenu menu, ItemKey key) {
+        if (key.matches(menu.getCarried())) {
+            return true;
+        }
+        for (Slot slot : menu.slots) {
+            if (key.matches(slot.getItem())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void depositCarried(ServerPlayer player, PlayerVaultData vaultData) {
+        ItemStack carried = player.containerMenu.getCarried();
+        if (carried.isEmpty()) {
+            return;
+        }
+        ItemKey carriedKey = ItemKey.fromStack(carried);
+        int toDeposit = this.extraData == SINGLE_ITEM ? 1 : carried.getCount();
+        long accepted = vaultData.deposit(carriedKey, toDeposit);
+        if (accepted <= 0L) {
+            reportRejected(player, carriedKey);
+            return;
+        }
+        carried.shrink((int) accepted);
+        player.containerMenu.setCarried(carried.isEmpty() ? ItemStack.EMPTY : carried);
+        player.containerMenu.broadcastChanges();
+        VaultSync.commit(player, List.of(carriedKey));
+    }
+
+    private void pickupToCursor(ServerPlayer player, PlayerVaultData vaultData) {
+        if (this.key.isEmpty()) {
+            return;
+        }
+        ItemStack carried = player.containerMenu.getCarried();
+        if (!carried.isEmpty() && !this.key.matches(carried)) {
+            return;
+        }
+        int space = this.key.getMaxStackSize() - carried.getCount();
+        if (space <= 0) {
+            return;
+        }
+        long withdrawn = vaultData.withdraw(this.key, Math.min(space, Math.max(1L, this.amount)));
+        if (withdrawn <= 0L) {
+            return;
+        }
+        if (carried.isEmpty()) {
+            player.containerMenu.setCarried(this.key.toStack((int) withdrawn));
+        } else {
+            carried.grow((int) withdrawn);
+            player.containerMenu.setCarried(carried);
+        }
+        player.containerMenu.broadcastChanges();
+        VaultSync.commit(player, List.of(this.key));
+    }
+
+    /**
      * Keepsakes actions; the Vault's access rules were already checked by the caller.
      */
     private void handleKeepsake(ServerPlayer player, Keepsakes keepsakes) {
@@ -314,7 +352,7 @@ public final class PacketC2SVaultAction {
                     return;
                 }
                 ItemKey carriedKey = ItemKey.fromStack(carried);
-                long accepted = keepsakes.deposit(carriedKey, this.extraData == 1 ? 1 : carried.getCount());
+                long accepted = keepsakes.deposit(carriedKey, this.extraData == SINGLE_ITEM ? 1 : carried.getCount());
                 if (accepted <= 0L) {
                     Component reason = VaultRules.getRejectionReason(carriedKey);
                     player.displayClientMessage((reason != null ? reason : Component.translatable("gui.soulsvault.keepsakes.full"))
@@ -329,9 +367,8 @@ public final class PacketC2SVaultAction {
                 if (this.key.isEmpty() || (!carried.isEmpty() && !this.key.matches(carried))) {
                     return;
                 }
-                int maxStack = Math.max(1, this.key.getItem().getMaxStackSize());
-                int space = maxStack - carried.getCount();
-                long withdrawn = keepsakes.withdraw(this.key, Math.min(space, Math.max(1L, this.amount)));
+                int space = this.key.getMaxStackSize() - carried.getCount();
+                long withdrawn = space > 0 ? keepsakes.withdraw(this.key, Math.min(space, Math.max(1L, this.amount))) : 0L;
                 if (withdrawn <= 0L) {
                     return;
                 }

@@ -5,6 +5,7 @@ import com.soulsvault.core.VaultAccess;
 import com.soulsvault.core.rest.RestPointProfile;
 import com.soulsvault.core.rest.RestPointProfiles;
 import com.soulsvault.platform.Services;
+import com.soulsvault.world.inventory.CasketAnchor;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -35,7 +36,8 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 
 /**
  * Craftable dark stone/iron casket block that grants direct access to a player's Casket of Echoes
- * and triggers Rest & Replenish upon interaction.
+ * and triggers Rest &amp; Replenish upon interaction. Also hosts the shared "open the Casket at a Rest Point"
+ * flow used by Rest Point blocks and Spectral Caskets.
  */
 public class BottomlessCasketBlock extends HorizontalDirectionalBlock {
     private static final VoxelShape SHAPE_NORTH_SOUTH = Block.box(1.0D, 0.0D, 2.0D, 15.0D, 14.0D, 14.0D);
@@ -57,6 +59,7 @@ public class BottomlessCasketBlock extends HorizontalDirectionalBlock {
     }
 
     @Override
+    @SuppressWarnings("deprecation") // Vanilla deprecates this for callers (use the BlockState); overriding is intended
     public VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
         Direction dir = state.getValue(FACING);
         return (dir == Direction.NORTH || dir == Direction.SOUTH) ? SHAPE_NORTH_SOUTH : SHAPE_EAST_WEST;
@@ -74,7 +77,7 @@ public class BottomlessCasketBlock extends HorizontalDirectionalBlock {
 
     @Override
     public BlockState mirror(BlockState state, Mirror mirror) {
-        return state.rotate(mirror.getRotation(state.getValue(FACING)));
+        return rotate(state, mirror.getRotation(state.getValue(FACING)));
     }
 
     @Override
@@ -83,6 +86,7 @@ public class BottomlessCasketBlock extends HorizontalDirectionalBlock {
     }
 
     @Override
+    @SuppressWarnings("deprecation") // Vanilla deprecates this for callers (use the BlockState); overriding is intended
     public InteractionResult use(
             BlockState state,
             Level level,
@@ -109,10 +113,19 @@ public class BottomlessCasketBlock extends HorizontalDirectionalBlock {
     }
 
     /**
-     * Opens the Casket with a Rest Point profile: rests (replenish + the profile's resting effects) unless
-     * combat-locked, then opens the screen with the profile's session powers.
+     * Opens the Casket at a Rest Point block with its profile: rests (replenish + the profile's resting effects)
+     * unless combat-locked, then opens the screen with the profile's session powers.
      */
     public static void openCasketForPlayer(ServerPlayer serverPlayer, BlockPos restPos, RestPointProfile profile) {
+        openCasketForPlayer(serverPlayer, restPos, profile, CasketAnchor.atBlock(serverPlayer.level(), restPos, profile));
+    }
+
+    /**
+     * Same as {@link #openCasketForPlayer(ServerPlayer, BlockPos, RestPointProfile)} for any anchor, e.g. a Spectral
+     * Casket entity standing at {@code restPos}.
+     */
+    public static void openCasketForPlayer(ServerPlayer serverPlayer, BlockPos restPos, RestPointProfile profile,
+                                           CasketAnchor anchor) {
         Component denied = VaultAccess.check(serverPlayer, VaultAccess.Type.OPEN, profile.grants().any());
         if (denied != null) {
             serverPlayer.displayClientMessage(denied.copy().withStyle(ChatFormatting.RED), true);
@@ -136,7 +149,7 @@ public class BottomlessCasketBlock extends HorizontalDirectionalBlock {
         } else {
             serverPlayer.displayClientMessage(restDenied.copy().withStyle(ChatFormatting.RED), true);
         }
-        Services.PLATFORM.openVaultMenu(serverPlayer, profile.grants());
+        Services.PLATFORM.openVaultMenu(serverPlayer, profile.grants(), anchor);
     }
 
     @Override

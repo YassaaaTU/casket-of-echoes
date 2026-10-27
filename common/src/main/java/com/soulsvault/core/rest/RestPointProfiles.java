@@ -4,10 +4,10 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.soulsvault.Constants;
 import com.soulsvault.config.SoulsVaultConfig;
+import com.soulsvault.core.RegistryLookups;
 import com.soulsvault.core.rest.RestPointProfile.Grants;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -66,12 +66,26 @@ public final class RestPointProfiles {
             new ResourceLocation(Constants.MOD_ID, "spectral_casket"), Set.of(), List.of(),
             0, false, 0.0D, Grants.ALL, false, false, false, false);
 
+    /** Largest per-profile reach honoured by {@link #findNearby}, bounding its block scan. */
+    private static final double MAX_SCAN_REACH = 16.0D;
+    /** Blocks scanned above and below the player's feet by {@link #findNearby}. */
+    private static final int SCAN_HEIGHT = 2;
+
+    /**
+     * A usable Rest Point found around a player.
+     */
+    public record Nearby(BlockPos pos, RestPointProfile profile) {
+    }
+
     private static volatile List<RestPointProfile> profiles = List.of();
     private static final Map<BlockState, Optional<RestPointProfile>> CACHE = new ConcurrentHashMap<>();
 
     private RestPointProfiles() {
     }
 
+    /**
+     * Forgets cached block state lookups; call when block tags change.
+     */
     public static void clearCache() {
         CACHE.clear();
     }
@@ -93,6 +107,9 @@ public final class RestPointProfiles {
         return state.is(Constants.REST_POINTS_TAG) ? Optional.of(TAGGED_DEFAULT) : Optional.empty();
     }
 
+    /**
+     * How close a player must stand to use a Rest Point with this profile.
+     */
     public static double reachOf(RestPointProfile profile) {
         return profile.reach() > 0.0D ? profile.reach() : SoulsVaultConfig.restPoints().reachBlocks();
     }
@@ -109,20 +126,24 @@ public final class RestPointProfiles {
      * The nearest usable Rest Point around the player, or {@code null}.
      */
     @Nullable
-    public static RestPointProfile findNearby(ServerPlayer player) {
+    public static Nearby findNearby(ServerPlayer player) {
         Level level = player.level();
         int radius = (int) Math.ceil(Math.max(SoulsVaultConfig.restPoints().reachBlocks(), maxProfileReach()));
         BlockPos center = player.blockPosition();
-        RestPointProfile best = null;
+        Nearby best = null;
         double bestDistance = Double.MAX_VALUE;
-        for (BlockPos pos : BlockPos.betweenClosed(center.offset(-radius, -2, -radius), center.offset(radius, 2, radius))) {
+        for (BlockPos pos : BlockPos.betweenClosed(center.offset(-radius, -SCAN_HEIGHT, -radius),
+                center.offset(radius, SCAN_HEIGHT, radius))) {
+            if (!level.isLoaded(pos)) {
+                continue;
+            }
             RestPointProfile profile = find(level.getBlockState(pos));
             if (profile == null || !inReach(player, pos, profile)) {
                 continue;
             }
             double distance = player.distanceToSqr(Vec3.atCenterOf(pos));
             if (distance < bestDistance) {
-                best = profile;
+                best = new Nearby(pos.immutable(), profile);
                 bestDistance = distance;
             }
         }
@@ -134,7 +155,7 @@ public final class RestPointProfiles {
         for (RestPointProfile profile : profiles) {
             max = Math.max(max, profile.reach());
         }
-        return Math.min(16.0D, max);
+        return Math.min(MAX_SCAN_REACH, max);
     }
 
     /**
@@ -201,7 +222,7 @@ public final class RestPointProfiles {
                 if (value.startsWith("#")) {
                     tags.add(TagKey.create(Registries.BLOCK, new ResourceLocation(value.substring(1))));
                 } else {
-                    BuiltInRegistries.BLOCK.getOptional(new ResourceLocation(value)).ifPresent(blocks::add);
+                    RegistryLookups.block(new ResourceLocation(value)).ifPresent(blocks::add);
                 }
             }
             Grants grants = new Grants(

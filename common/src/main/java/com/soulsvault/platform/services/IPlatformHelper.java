@@ -9,6 +9,7 @@ import com.soulsvault.core.VaultEntry;
 import com.soulsvault.core.VaultStorage;
 import com.soulsvault.core.rest.RestPointProfile;
 import com.soulsvault.party.PartyRegistry;
+import com.soulsvault.world.inventory.CasketAnchor;
 import com.soulsvault.world.inventory.SoulsVaultMenu;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -28,6 +29,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * Everything common code needs from the mod loader: saved data, networking, menus, events and soft-dependency
+ * bridges (Curios, Epic Fight, FTB Quests, Quark, Waystones). The loader module provides the implementation
+ * through {@link com.soulsvault.platform.Services}.
+ */
 public interface IPlatformHelper {
 
     /**
@@ -93,7 +99,7 @@ public interface IPlatformHelper {
     }
 
     /**
-     * Returns all live Curios & Aether accessory slots (or cosmetic Curios slots) for the given player.
+     * Returns all live Curios &amp; Aether accessory slots (or cosmetic Curios slots) for the given player.
      */
     default List<AccessorySlotAccess> getAccessorySlots(Player player, boolean cosmetic) {
         return Collections.emptyList();
@@ -106,9 +112,6 @@ public interface IPlatformHelper {
         return Collections.emptyList();
     }
 
-    /**
-     * Triggers the Waystones inventory button action if {@code waystones} is loaded.
-     */
     /**
      * Sorts the player's 27 main inventory slots (never the hotbar). Loaders route this through an installed
      * inventory-sorting mod (Quark) so it matches the player's usual sort order.
@@ -124,6 +127,11 @@ public interface IPlatformHelper {
     default void detachCapabilities(Entity entity) {
     }
 
+    /**
+     * Triggers the Waystones inventory button action if {@code waystones} is loaded (client side).
+     *
+     * @return {@code true} when Waystones handled the click
+     */
     default boolean triggerWaystonesButton() {
         return false;
     }
@@ -135,8 +143,11 @@ public interface IPlatformHelper {
 
     /**
      * Opens the server-synchronized {@link SoulsVaultMenu} for the player and syncs their Vault contents.
+     *
+     * @param grants session powers of the Rest Point it was opened at ({@code NONE} for remote sessions)
+     * @param anchor what the session was opened at, so those powers lapse when the player leaves it
      */
-    void openVaultMenu(ServerPlayer player, RestPointProfile.Grants grants);
+    void openVaultMenu(ServerPlayer player, RestPointProfile.Grants grants, @Nullable CasketAnchor anchor);
 
     /**
      * Spawns a 60-second temporary SpectralCasketEntity in front of the player.
@@ -170,12 +181,6 @@ public interface IPlatformHelper {
     PartyRegistry getPartyRegistry(MinecraftServer server);
 
     /**
-     * Vault data marks itself dirty on change; kept for callers that mutate through other paths.
-     */
-    default void markVaultDirty(ServerPlayer player) {
-    }
-
-    /**
      * Fires the loader's cancelable vault access event.
      *
      * @return the denial reason when a listener cancelled it, else {@code null}
@@ -201,6 +206,9 @@ public interface IPlatformHelper {
         return amount;
     }
 
+    /**
+     * Fires the loader's "after Rest &amp; Replenish" event with what moved.
+     */
     default void postRestReplenishPost(ServerPlayer player, int sweptToVault, int refilledToPlayer) {
     }
 
@@ -218,6 +226,9 @@ public interface IPlatformHelper {
         return 0.0D;
     }
 
+    /**
+     * Sends the player their Equip Load meter values.
+     */
     void sendEquipLoad(ServerPlayer player, double load, double capacity);
 
     /**

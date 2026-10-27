@@ -61,14 +61,17 @@ public final class ForgeClientEvents {
         }
     }
 
+    /**
+     * Drops everything cached from the server being left, so another world or server never shows stale state.
+     */
     private static void onLoggingOut(final ClientPlayerNetworkEvent.LoggingOut event) {
         ClientPartyCache.reset();
+        ClientVaultCache.reset();
     }
 
     private static void onClientSetup(final FMLClientSetupEvent event) {
         event.enqueueWork(() -> {
             MenuScreens.register(ForgeModBlocks.VAULT_MENU.get(), SoulsVaultScreen::new);
-            SoulsOverflowToastOverlay.init();
             XaeroPartyTracker.register();
             ClientVaultCache.setVaultScreenOpener(() -> {
                 Minecraft mc = Minecraft.getInstance();
@@ -121,7 +124,7 @@ public final class ForgeClientEvents {
             return;
         }
         event.setCanceled(true);
-        ForgeNetworkHandler.sendToServer(PacketC2SOpenVault.openFromInventoryKey());
+        ForgeNetworkHandler.sendToServer(PacketC2SOpenVault.request());
     }
 
     private static void onRegisterGuiOverlays(final RegisterGuiOverlaysEvent event) {

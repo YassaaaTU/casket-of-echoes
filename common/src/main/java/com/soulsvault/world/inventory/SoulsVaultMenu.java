@@ -7,13 +7,13 @@ import com.soulsvault.core.ItemKey;
 import com.soulsvault.core.KeepsakeSync;
 import com.soulsvault.core.Keepsakes;
 import com.soulsvault.core.PlayerVaultData;
+import com.soulsvault.core.RegistryLookups;
 import com.soulsvault.core.VaultAccess;
 import com.soulsvault.core.VaultRules;
 import com.soulsvault.core.VaultSync;
 import com.soulsvault.core.rest.RestPointProfile;
 import com.soulsvault.platform.Services;
 import net.minecraft.ChatFormatting;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -48,7 +48,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Server-synchronized container menu for the Souls-like Inventory & Casket of Echoes UI.
+ * Server-synchronized container menu for the Souls-like Inventory &amp; Casket of Echoes UI.
  * <p>
  * Provides real {@link Slot} instances for:
  * <ul>
@@ -58,6 +58,8 @@ import java.util.Set;
  *       Inventory Essentials, and Controller snapping</li>
  *   <li>Dynamic Curios API, The Aether accessory, and Cosmetic Armor Reworked slots</li>
  * </ul>
+ * Vault access is decided on the server for every transfer (attunement, Rest Point powers, remote cost, combat lock
+ * and the loader's access event); a data slot mirrors the result so the client can show the seal.
  */
 public class SoulsVaultMenu extends AbstractContainerMenu {
     public static final int LEFT_PANE_OFFSET_X = 8;
@@ -83,6 +85,9 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
             EquipmentSlot.FEET
     };
 
+    /**
+     * What the left pane above the inventory shows.
+     */
     public enum LeftPaneMode {
         GEAR_CURIOS,
         CRAFTING,
@@ -91,6 +96,9 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
 
     private final Player player;
     private final RestPointProfile.Grants grants;
+    /** What the session was opened at (server side only); {@code null} for remote sessions. */
+    @Nullable
+    private final CasketAnchor anchor;
     private final CraftingContainer craftSlots = new TransientCraftingContainer(this, 3, 3);
     private final ResultContainer resultSlots = new ResultContainer();
 
@@ -117,24 +125,36 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
     private static final int LOCK_COMBAT = 1;
     private static final int LOCK_REMOTE_UNLOCKED = 1 << 1;
     private static final int LOCK_UNATTUNED = 1 << 2;
+    /** The player left the Rest Point / Spectral Casket the session was opened at; its powers no longer apply. */
+    private static final int LOCK_AWAY = 1 << 3;
     private static final int LOCK_REFRESH_TICKS = 10;
-    /** Synced to the client: combat lock, attunement and whether the remote access cost was paid this session. */
+    /**
+     * Synced to the client: combat lock, attunement, whether the player is still at the Rest Point, and whether the
+     * remote access cost was paid this session.
+     */
     private final DataSlot lockState = DataSlot.standalone();
     private int lockRefreshCountdown = 0;
 
+    /**
+     * Client-side constructor, reading the session powers the server sent with the open-screen packet.
+     */
     public SoulsVaultMenu(int containerId, Inventory playerInventory, FriendlyByteBuf extraData) {
         this(containerId, playerInventory, extraData != null && extraData.readableBytes() > 0
                 ? RestPointProfile.Grants.decode(extraData)
-                : RestPointProfile.Grants.NONE);
+                : RestPointProfile.Grants.NONE, null);
     }
 
     /**
      * @param grants session powers from the Rest Point profile it was opened at ({@code NONE} when opened remotely)
+     * @param anchor what the session was opened at, so the powers lapse when the player leaves it; {@code null} on
+     *               the client and for remote sessions
      */
-    public SoulsVaultMenu(int containerId, Inventory playerInventory, RestPointProfile.Grants grants) {
+    public SoulsVaultMenu(int containerId, Inventory playerInventory, RestPointProfile.Grants grants,
+                          @Nullable CasketAnchor anchor) {
         super(Services.PLATFORM.getVaultMenuType(), containerId);
         this.player = playerInventory.player;
         this.grants = grants != null ? grants : RestPointProfile.Grants.NONE;
+        this.anchor = anchor;
 
         // 1. Crafting Result Slot (Index 0) + 3x3 Crafting Matrix (Indices 1..9)
         this.craftResultSlotIndex = this.slots.size();
@@ -242,14 +262,15 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
     }
 
     /**
-     * Whether Vault deposits/withdrawals are allowed right now: at a Rest Point, or remotely when the server allows
-     * it and any remote access cost was paid; never while combat-locked. Mirrors on the client via a data slot.
+     * Whether Vault deposits/withdrawals look allowed from the synced lock state: at a Rest Point, or remotely when
+     * the server allows it and any remote access cost was paid; never while combat-locked. The client uses this to
+     * predict; the server decides with {@link #getVaultDenialReason(ServerPlayer)}.
      */
     public boolean isVaultAccessAllowed() {
         if (isCombatLocked() || isUnattuned()) {
             return false;
         }
-        if (this.grants.vault()) {
+        if (getGrants().vault()) {
             return true;
         }
         return SoulsVaultConfig.isAllowRemoteVaultInFullInventory() && !needsRemoteUnlock();
@@ -270,7 +291,7 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
      * Whether the Vault pane shows the "unlock for a cost" button (remote session, cost configured, not yet paid).
      */
     public boolean needsRemoteUnlock() {
-        return !this.grants.vault()
+        return !getGrants().vault()
                 && !isUnattuned()
                 && SoulsVaultConfig.isAllowRemoteVaultInFullInventory()
                 && SoulsVaultConfig.remoteAccess().hasCost()
@@ -278,7 +299,8 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
     }
 
     /**
-     * Server-side reason Vault deposits/withdrawals are refused, or {@code null}.
+     * Server-side reason Vault deposits/withdrawals are refused, or {@code null}. Callers refresh the lock state
+     * first ({@link #refreshAccessState}) so the Rest Point check is current.
      */
     @Nullable
     public Component getVaultDenialReason(ServerPlayer serverPlayer) {
@@ -286,13 +308,42 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
         if (unattuned != null) {
             return unattuned;
         }
-        if (!this.grants.vault() && !SoulsVaultConfig.isAllowRemoteVaultInFullInventory()) {
+        RestPointProfile.Grants current = getGrants();
+        if (!current.vault() && !SoulsVaultConfig.isAllowRemoteVaultInFullInventory()) {
             return Component.translatable("gui.soulsvault.notice.rest_point_required");
         }
         if (needsRemoteUnlock()) {
             return Component.translatable("gui.soulsvault.notice.remote_locked");
         }
-        return VaultAccess.check(serverPlayer, VaultAccess.Type.VAULT, this.grants.vault());
+        return VaultAccess.check(serverPlayer, VaultAccess.Type.VAULT, current.vault());
+    }
+
+    /**
+     * Server-side gate for Vault transfers the menu makes itself (shift-click deposits, crafting refills, recipe
+     * fills, emptying the grid): the same rules as a Vault packet, evaluated now rather than from the synced state.
+     */
+    private boolean mayUseVault(ServerPlayer serverPlayer) {
+        refreshAccessState(serverPlayer);
+        return getVaultDenialReason(serverPlayer) == null;
+    }
+
+    /**
+     * Recomputes the synced lock state (combat lock, attunement, whether the player is still at the Rest Point).
+     * Runs periodically from {@link #broadcastChanges()} and right before the server acts on a request.
+     */
+    public void refreshAccessState(ServerPlayer serverPlayer) {
+        int state = this.lockState.get() & LOCK_REMOTE_UNLOCKED;
+        if (VaultAccess.getCombatReason(serverPlayer) != null) {
+            state |= LOCK_COMBAT;
+        }
+        if (!Attunement.isAttuned(serverPlayer)) {
+            state |= LOCK_UNATTUNED;
+        }
+        if (this.anchor != null && !this.anchor.isNear(serverPlayer)) {
+            state |= LOCK_AWAY;
+        }
+        this.lockState.set(state);
+        this.lockRefreshCountdown = LOCK_REFRESH_TICKS;
     }
 
     /**
@@ -331,18 +382,18 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
     }
 
     private static boolean payWithItems(ServerPlayer serverPlayer, SoulsVaultConfig.RemoteAccess cost) {
-        ResourceLocation id = ResourceLocation.tryParse(cost.costItem());
-        Item item = id != null ? BuiltInRegistries.ITEM.get(id) : null;
+        Item item = RegistryLookups.item(ResourceLocation.tryParse(cost.costItem())).orElse(null);
         if (item == null) {
             return false;
         }
+        // countItem covers every slot (armor and offhand too), so the payment must be taken from every slot as well
         Inventory inventory = serverPlayer.getInventory();
         if (inventory.countItem(item) < cost.costAmount()) {
             return false;
         }
         int remaining = cost.costAmount();
-        for (int i = 0; i < inventory.items.size() && remaining > 0; i++) {
-            ItemStack stack = inventory.items.get(i);
+        for (int i = 0; i < inventory.getContainerSize() && remaining > 0; i++) {
+            ItemStack stack = inventory.getItem(i);
             if (stack.is(item)) {
                 int take = Math.min(remaining, stack.getCount());
                 stack.shrink(take);
@@ -356,34 +407,24 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
     @Override
     public void broadcastChanges() {
         if (this.player instanceof ServerPlayer serverPlayer && --this.lockRefreshCountdown <= 0) {
-            this.lockRefreshCountdown = LOCK_REFRESH_TICKS;
-            boolean combat = VaultAccess.getCombatReason(serverPlayer) != null;
-            boolean unattuned = !Attunement.isAttuned(serverPlayer);
-            int state = this.lockState.get();
-            state = combat ? state | LOCK_COMBAT : state & ~LOCK_COMBAT;
-            this.lockState.set(unattuned ? state | LOCK_UNATTUNED : state & ~LOCK_UNATTUNED);
+            refreshAccessState(serverPlayer);
         }
         super.broadcastChanges();
     }
 
-    public boolean isOpenedAtRestPoint() {
-        return this.grants.any();
-    }
-
     /**
-     * Powers granted by the Rest Point profile this session was opened at.
+     * Powers of this session: those of the Rest Point profile it was opened at while the player stays there, none
+     * once they walk away (the session then follows the remote rules).
      */
     public RestPointProfile.Grants getGrants() {
-        return this.grants;
+        return (this.lockState.get() & LOCK_AWAY) != 0 ? RestPointProfile.Grants.NONE : this.grants;
     }
 
     public LeftPaneMode getLeftPaneMode() {
         return this.leftPaneMode;
     }
 
-    /**
-     * Menu button id handled by {@link #clickMenuButton} that switches the left pane to {@code mode}.
-     */
+    /** Menu button ids handled by {@link #clickMenuButton} that show / hide the Keepsakes in the Vault pane. */
     public static final int KEEPSAKES_VIEW_ON = 6;
     public static final int KEEPSAKES_VIEW_OFF = 7;
 
@@ -395,6 +436,9 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
         this.keepsakesView = keepsakesView;
     }
 
+    /**
+     * Menu button id handled by {@link #clickMenuButton} that switches the left pane to {@code mode}.
+     */
     public static int leftPaneButtonId(LeftPaneMode mode) {
         return switch (mode) {
             case GEAR_CURIOS -> 0;
@@ -490,19 +534,22 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
     }
 
     /**
-     * Sweeps all items currently inside the 3x3 Crafting Grid into the player's Vault (if allowed)
-     * or back into the player's inventory.
+     * Sweeps all items currently inside the 3x3 Crafting Grid into the player's Vault (if allowed) or back into the
+     * player's inventory. A dead or disconnected player's inventory has already been dropped or saved, so leftovers
+     * are dropped in the world instead, exactly like vanilla crafting grids.
      */
     public void clearCraftingGridToVaultOrInventory(ServerPlayer serverPlayer) {
         PlayerVaultData vaultData = Services.PLATFORM.getPlayerVaultData(serverPlayer);
         Set<ItemKey> modifiedVaultKeys = new LinkedHashSet<>();
+        boolean toVault = !this.craftSlots.isEmpty() && mayUseVault(serverPlayer);
+        boolean playerGone = !serverPlayer.isAlive() || serverPlayer.hasDisconnected();
 
         for (int i = 0; i < this.craftSlots.getContainerSize(); i++) {
-            ItemStack stack = this.craftSlots.getItem(i);
+            ItemStack stack = this.craftSlots.removeItemNoUpdate(i);
             if (stack.isEmpty()) {
                 continue;
             }
-            if (isVaultAccessAllowed()) {
+            if (toVault) {
                 ItemKey key = ItemKey.fromStack(stack);
                 long accepted = vaultData.deposit(key, stack.getCount());
                 if (accepted > 0L) {
@@ -511,9 +558,12 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
                 }
             }
             if (!stack.isEmpty()) {
-                serverPlayer.getInventory().placeItemBackInInventory(stack);
+                if (playerGone) {
+                    serverPlayer.drop(stack, false);
+                } else {
+                    serverPlayer.getInventory().placeItemBackInInventory(stack);
+                }
             }
-            this.craftSlots.setItem(i, ItemStack.EMPTY);
         }
 
         this.slotsChanged(this.craftSlots);
@@ -535,7 +585,7 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
      * is allowed) and then from the player's inventory. Does nothing if the server-side plan cannot be filled.
      */
     public void fillCraftingGridForRecipe(ServerPlayer serverPlayer, List<List<ItemKey>> slotCandidates, int requestedCrafts) {
-        PlayerVaultData vaultData = isVaultAccessAllowed() ? Services.PLATFORM.getPlayerVaultData(serverPlayer) : null;
+        PlayerVaultData vaultData = mayUseVault(serverPlayer) ? Services.PLATFORM.getPlayerVaultData(serverPlayer) : null;
         CraftingGridPlanner.Plan plan = CraftingGridPlanner.plan(
                 CraftingGridPlanner.collectAvailable(serverPlayer, this.craftSlots, vaultData),
                 slotCandidates,
@@ -594,6 +644,10 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
         super.removed(player);
         if (!player.level().isClientSide && player instanceof ServerPlayer serverPlayer) {
             clearCraftingGridToVaultOrInventory(serverPlayer);
+            if (serverPlayer.hasDisconnected()) {
+                // The menu closes after the logout cleanup ran; the sync above re-recorded the player's binding
+                VaultSync.forget(serverPlayer.getUUID());
+            }
         }
     }
 
@@ -662,8 +716,11 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
                 return copy;
             }
 
+            // The server decides with the full, current rules; the client only predicts from the synced lock state
+            boolean vaultOpen = player instanceof ServerPlayer serverPlayer ? mayUseVault(serverPlayer) : isVaultAccessAllowed();
+
             // Keepsakes view: shift-click files the item into the private Keepsakes (and never into the Vault)
-            if (this.keepsakesView && isVaultAccessAllowed()) {
+            if (this.keepsakesView && vaultOpen) {
                 if (!player.level().isClientSide && player instanceof ServerPlayer serverPlayer) {
                     Keepsakes keepsakes = Services.PLATFORM.getPlayerVaultData(serverPlayer).getKeepsakes();
                     long accepted = keepsakes.deposit(ItemKey.fromStack(slotStack), slotStack.getCount());
@@ -685,7 +742,7 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
             }
 
             // Deposit into Vault when Vault access is active on the server
-            if (isVaultAccessAllowed()) {
+            if (vaultOpen) {
                 if (!player.level().isClientSide && player instanceof ServerPlayer serverPlayer) {
                     PlayerVaultData vaultData = Services.PLATFORM.getPlayerVaultData(serverPlayer);
                     ItemKey key = ItemKey.fromStack(slotStack);
@@ -792,11 +849,37 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
     }
 
     /**
-     * Crafting Result Slot that automatically pulls replacement ingredients from the player's
-     * Casket of Echoes Vault whenever a 3x3 crafting grid slot is depleted during crafting!
+     * Refills grid slots a craft just emptied with one item each from the Vault (Refined Storage / AE2 style),
+     * when Vault access is allowed.
+     *
+     * @param priorKeys what each grid slot held before the craft consumed it
+     */
+    private void refillGridFromVault(ServerPlayer serverPlayer, ItemKey[] priorKeys) {
+        PlayerVaultData vaultData = null;
+        Set<ItemKey> modifiedVaultKeys = new LinkedHashSet<>();
+        for (int i = 0; i < priorKeys.length; i++) {
+            ItemKey ingredientKey = priorKeys[i];
+            if (ingredientKey.isEmpty() || !this.craftSlots.getItem(i).isEmpty()) {
+                continue;
+            }
+            if (vaultData == null) {
+                if (!mayUseVault(serverPlayer)) {
+                    return;
+                }
+                vaultData = Services.PLATFORM.getPlayerVaultData(serverPlayer);
+            }
+            if (vaultData.withdraw(ingredientKey, 1L) > 0L) {
+                this.craftSlots.setItem(i, ingredientKey.toSingleStack());
+                modifiedVaultKeys.add(ingredientKey);
+            }
+        }
+        VaultSync.commit(serverPlayer, modifiedVaultKeys);
+    }
+
+    /**
+     * Crafting result slot that refills depleted grid slots from the Vault after each craft.
      */
     private final class VaultCraftingResultSlot extends ResultSlot {
-        private final Player craftPlayer;
 
         VaultCraftingResultSlot(
                 Player player,
@@ -807,7 +890,6 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
                 int y
         ) {
             super(player, craftSlots, resultContainer, slot, x, y);
-            this.craftPlayer = player;
         }
 
         @Override
@@ -825,37 +907,15 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
 
             super.onTake(player, craftedStack);
 
-            // Server-side Auto-Refill from Vault (Refined Storage / AE2 style)
-            if (!player.level().isClientSide
-                    && player instanceof ServerPlayer serverPlayer
-                    && SoulsVaultMenu.this.isVaultAccessAllowed()) {
-                PlayerVaultData vaultData = Services.PLATFORM.getPlayerVaultData(serverPlayer);
-                Set<ItemKey> modifiedVaultKeys = new LinkedHashSet<>();
-
-                for (int i = 0; i < priorKeys.length; i++) {
-                    ItemKey ingredientKey = priorKeys[i];
-                    if (ingredientKey == null || ingredientKey.isEmpty()) {
-                        continue;
-                    }
-                    ItemStack remainingInSlot = SoulsVaultMenu.this.craftSlots.getItem(i);
-                    if (remainingInSlot.isEmpty() && vaultData.getCount(ingredientKey) > 0L) {
-                        long withdrawn = vaultData.withdraw(ingredientKey, 1L);
-                        if (withdrawn > 0L) {
-                            SoulsVaultMenu.this.craftSlots.setItem(i, ingredientKey.toSingleStack());
-                            modifiedVaultKeys.add(ingredientKey);
-                        }
-                    }
-                }
-
-                VaultSync.commit(serverPlayer, modifiedVaultKeys);
+            if (player instanceof ServerPlayer serverPlayer) {
+                SoulsVaultMenu.this.refillGridFromVault(serverPlayer, priorKeys);
             }
-
             SoulsVaultMenu.this.slotsChanged(SoulsVaultMenu.this.craftSlots);
         }
     }
 
     /**
-     * Vanilla Armor Slot active when in Gear & Curios mode (and not overridden by Cosmetic Armor).
+     * Vanilla Armor Slot active when in Gear &amp; Curios mode (and not overridden by Cosmetic Armor).
      */
     public final class EquipmentMenuSlot extends Slot {
         private final EquipmentSlot equipmentSlot;
@@ -904,7 +964,7 @@ public class SoulsVaultMenu extends AbstractContainerMenu {
     }
 
     /**
-     * Vanilla Offhand Slot active when in Gear & Curios mode.
+     * Vanilla Offhand Slot active when in Gear &amp; Curios mode.
      */
     public final class OffhandMenuSlot extends Slot {
         OffhandMenuSlot(Container container, int slot, int x, int y) {
