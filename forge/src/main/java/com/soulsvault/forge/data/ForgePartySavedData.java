@@ -21,6 +21,9 @@ public final class ForgePartySavedData extends SavedData {
         this.registry.setDirtyListener(this::setDirty);
     }
 
+    /**
+     * The world's party data, loaded or created in the Overworld data storage.
+     */
     public static ForgePartySavedData get(MinecraftServer server) {
         ServerLevel overworld = Objects.requireNonNull(server.overworld(), "Server overworld cannot be null");
         return overworld.getDataStorage().computeIfAbsent(ForgePartySavedData::load, ForgePartySavedData::new, FILE_ID);

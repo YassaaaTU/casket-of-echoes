@@ -23,10 +23,16 @@ public final class VaultSync {
     private VaultSync() {
     }
 
+    /**
+     * Remembers which storage a player currently uses; called by the platform's vault lookup.
+     */
     public static void recordBinding(UUID playerId, String storageId) {
         BINDINGS.put(playerId, storageId);
     }
 
+    /**
+     * Drops the player's binding (on logout).
+     */
     public static void forget(UUID playerId) {
         BINDINGS.remove(playerId);
     }
@@ -85,6 +91,9 @@ public final class VaultSync {
         }
     }
 
+    /**
+     * Full chunked resync of one player's Casket.
+     */
     public static void resync(ServerPlayer player) {
         Services.PLATFORM.syncFullVaultToClient(player, Services.PLATFORM.getPlayerVaultData(player));
     }

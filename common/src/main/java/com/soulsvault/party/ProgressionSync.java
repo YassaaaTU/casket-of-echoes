@@ -24,6 +24,9 @@ public final class ProgressionSync {
     private ProgressionSync() {
     }
 
+    /**
+     * Whether the party shares advancements (leader option resolved against the server rule).
+     */
     public static boolean sharesAdvancements(PartyView party) {
         return SoulsVaultConfig.party().shareAdvancements().resolve(party.settings().shareAdvancements());
     }

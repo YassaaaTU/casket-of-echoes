@@ -47,6 +47,9 @@ public record RestPointProfile(
         public static final Grants NONE = new Grants(false, false, false);
         public static final Grants ALL = new Grants(true, true, true);
 
+        /**
+         * Whether any power applies (the session counts as opened at a Rest Point).
+         */
         public boolean any() {
             return this.vault || this.replenish || this.echoSwap;
         }
@@ -61,6 +64,9 @@ public record RestPointProfile(
         }
     }
 
+    /**
+     * Whether this profile covers {@code state} (and, for {@code requiresLit}, it is lit).
+     */
     public boolean matches(BlockState state) {
         if (this.requiresLit && state.hasProperty(BlockStateProperties.LIT) && !state.getValue(BlockStateProperties.LIT)) {
             return false;

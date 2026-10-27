@@ -22,6 +22,9 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class VaultAccess {
 
+    /**
+     * Casket actions the access rules distinguish.
+     */
     public enum Type {
         /** Opening the Casket screen. Never combat-locked, so the inventory stays usable mid-fight. */
         OPEN,

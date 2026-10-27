@@ -33,6 +33,9 @@ public final class SoulsOverflowToastOverlay {
     private SoulsOverflowToastOverlay() {
     }
 
+    /**
+     * Subscribes the overlay to toast notifications; safe to call more than once.
+     */
     public static synchronized void init() {
         if (listenerRegistered) {
             return;
@@ -71,6 +74,9 @@ public final class SoulsOverflowToastOverlay {
         ACTIVE_TOASTS.add(new ActiveToast(key, event.displayStack().copyWithCount(1), event.count(), event.isReplenish(), now));
     }
 
+    /**
+     * Draws the active banners and drops expired ones; registered as a HUD layer by the loader.
+     */
     public static synchronized void render(GuiGraphics graphics, float partialTick, int screenWidth, int screenHeight) {
         if (ACTIVE_TOASTS.isEmpty()) {
             return;

@@ -12,6 +12,9 @@ public final class KeepsakeSync {
     private KeepsakeSync() {
     }
 
+    /**
+     * Sends the player their whole Keepsakes.
+     */
     public static void send(ServerPlayer player) {
         Keepsakes keepsakes = Services.PLATFORM.getPlayerVaultData(player).getKeepsakes();
         Services.PLATFORM.sendToClient(player,

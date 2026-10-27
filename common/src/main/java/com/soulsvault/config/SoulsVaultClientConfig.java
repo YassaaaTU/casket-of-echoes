@@ -10,6 +10,9 @@ import com.soulsvault.world.inventory.SoulsVaultMenu.LeftPaneMode;
  */
 public final class SoulsVaultClientConfig {
 
+    /**
+     * Screen corner or edge where overflow / replenish banners stack.
+     */
     public enum ToastPosition {
         TOP_LEFT,
         TOP_RIGHT,
@@ -18,6 +21,9 @@ public final class SoulsVaultClientConfig {
         BOTTOM_RIGHT
     }
 
+    /**
+     * How much each party frame shows.
+     */
     public enum PartyHudStyle {
         /** Portrait, name and health bar. */
         PORTRAIT,
@@ -27,6 +33,9 @@ public final class SoulsVaultClientConfig {
         MINIMAL
     }
 
+    /**
+     * Screen edge the party frames are attached to.
+     */
     public enum HudAnchor {
         TOP_LEFT,
         MIDDLE_LEFT,
@@ -59,6 +68,9 @@ public final class SoulsVaultClientConfig {
         HIDE
     }
 
+    /**
+     * Full client settings snapshot, swapped atomically on load and on every change.
+     */
     public record Settings(
             boolean toastsEnabled,
             ToastPosition toastPosition,
@@ -124,6 +136,10 @@ public final class SoulsVaultClientConfig {
         return settings;
     }
 
+    /**
+     * Installs settings read from the config file, and the writer used to persist runtime changes
+     * ({@code null} keeps the current writer).
+     */
     public static void apply(Settings newSettings, Writer newWriter) {
         settings = newSettings != null ? newSettings : Settings.DEFAULT;
         if (newWriter != null) {
@@ -131,18 +147,30 @@ public final class SoulsVaultClientConfig {
         }
     }
 
+    /**
+     * Category tab a newly opened Casket screen starts on.
+     */
     public static VaultCategory initialCategory() {
         return settings.rememberLastTab() ? settings.lastCategory() : VaultCategory.ALL;
     }
 
+    /**
+     * Sort mode a newly opened Casket screen starts with.
+     */
     public static VaultSortMode initialSortMode() {
         return settings.rememberLastTab() ? settings.lastSortMode() : settings.defaultSortMode();
     }
 
+    /**
+     * Left pane a newly opened Casket screen starts on.
+     */
     public static LeftPaneMode initialLeftPane() {
         return settings.rememberLastTab() ? settings.lastLeftPane() : LeftPaneMode.GEAR_CURIOS;
     }
 
+    /**
+     * Saves the tab and sort mode for next time (when {@code rememberLastTab} is on and they changed).
+     */
     public static void rememberTab(VaultCategory category, VaultSortMode sortMode) {
         Writer current = writer;
         if (settings.rememberLastTab() && current != null
@@ -151,6 +179,9 @@ public final class SoulsVaultClientConfig {
         }
     }
 
+    /**
+     * Saves the left pane for next time (when {@code rememberLastTab} is on and it changed).
+     */
     public static void rememberLeftPane(LeftPaneMode mode) {
         Writer current = writer;
         if (settings.rememberLastTab() && current != null && mode != null && mode != settings.lastLeftPane()) {
@@ -158,6 +189,9 @@ public final class SoulsVaultClientConfig {
         }
     }
 
+    /**
+     * Shows or hides the party HUD and saves the choice.
+     */
     public static void togglePartyHud() {
         setPartyHud(!settings.partyHudVisible(), settings.partyHudStyle(), settings.partyHudAnchor());
     }

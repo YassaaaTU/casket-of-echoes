@@ -34,6 +34,9 @@ import java.util.List;
  */
 public class CasketUpgradeItem extends Item {
 
+    /**
+     * Which upgrade an item applies.
+     */
     public enum Kind {
         RELIQUARY_SHARD,
         ECHO_POUCH

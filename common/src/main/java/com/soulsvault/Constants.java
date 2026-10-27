@@ -11,6 +11,9 @@ import net.minecraft.world.level.block.Block;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Mod-wide identifiers, limits and tag keys shared by every module.
+ */
 public final class Constants {
     public static final String MOD_ID = "soulsvault";
     public static final String MOD_NAME = "Casket of Echoes";

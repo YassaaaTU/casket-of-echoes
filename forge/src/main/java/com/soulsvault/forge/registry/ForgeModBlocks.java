@@ -23,6 +23,9 @@ import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.RegistryObject;
 
+/**
+ * Deferred registration of the mod's blocks, items, entity and menu type, plus their creative tab entries.
+ */
 public final class ForgeModBlocks {
     public static final DeferredRegister<Block> BLOCKS =
             DeferredRegister.create(ForgeRegistries.BLOCKS, Constants.MOD_ID);

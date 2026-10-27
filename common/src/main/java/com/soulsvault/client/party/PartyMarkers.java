@@ -152,6 +152,9 @@ public final class PartyMarkers {
         return tracked.position();
     }
 
+    /**
+     * Draws the markers projected by the last {@link #capture}; registered as a HUD layer by the loader.
+     */
     public static void render(GuiGraphics graphics, float partialTick, int screenWidth, int screenHeight) {
         Minecraft mc = Minecraft.getInstance();
         List<Marker> current = markers;

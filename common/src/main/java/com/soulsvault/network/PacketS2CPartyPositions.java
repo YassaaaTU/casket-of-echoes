@@ -17,6 +17,9 @@ import java.util.UUID;
  * every packet is the full list, so a teammate missing from it is no longer tracked.
  */
 public final class PacketS2CPartyPositions {
+    /**
+     * One teammate's feet position.
+     */
     public record Entry(UUID member, ResourceKey<Level> dimension, Vec3 position) {
     }
 

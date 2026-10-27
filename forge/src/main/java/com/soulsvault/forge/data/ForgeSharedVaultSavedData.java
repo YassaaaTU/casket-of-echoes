@@ -22,6 +22,9 @@ public final class ForgeSharedVaultSavedData extends SavedData {
         this.storage.setDirtyListener(this::setDirty);
     }
 
+    /**
+     * A party's shared Casket, loaded or created in the Overworld data storage.
+     */
     public static ForgeSharedVaultSavedData get(MinecraftServer server, String storageId) {
         ServerLevel overworld = Objects.requireNonNull(server.overworld(), "Server overworld cannot be null");
         return overworld.getDataStorage().computeIfAbsent(

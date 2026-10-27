@@ -53,10 +53,16 @@ public final class CraftingGridPlanner {
             }
         }
 
+        /**
+         * Available count per item (read-only view).
+         */
         public Map<ItemKey, Long> counts() {
             return Collections.unmodifiableMap(this.counts);
         }
 
+        /**
+         * How many of {@code key} are available (0 when none).
+         */
         public long getCount(ItemKey key) {
             return this.counts.getOrDefault(key, 0L);
         }
@@ -74,6 +80,9 @@ public final class CraftingGridPlanner {
      * @param craftCount   number of crafts the grid is filled for (0 when the recipe cannot be filled)
      */
     public record Plan(ItemKey[] chosen, List<Integer> missingSlots, int craftCount) {
+        /**
+         * Whether every ingredient slot has an item and at least one craft fits.
+         */
         public boolean canFill() {
             return this.missingSlots.isEmpty() && this.craftCount > 0;
         }

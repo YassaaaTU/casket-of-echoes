@@ -52,6 +52,9 @@ public final class VaultSearchQuery {
         this.alternatives = alternatives;
     }
 
+    /**
+     * Parses the search box text (case-insensitive); blank text gives {@link #EMPTY}.
+     */
     public static VaultSearchQuery parse(String raw) {
         String trimmed = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
         if (trimmed.isEmpty()) {
@@ -94,6 +97,9 @@ public final class VaultSearchQuery {
         return this.alternatives.isEmpty();
     }
 
+    /**
+     * The normalised (trimmed, lower-case) query text, used to detect real changes.
+     */
     public String raw() {
         return this.raw;
     }

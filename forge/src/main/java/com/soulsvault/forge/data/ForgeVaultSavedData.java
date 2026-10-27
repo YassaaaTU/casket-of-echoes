@@ -38,14 +38,23 @@ public final class ForgeVaultSavedData extends SavedData {
         return "player:" + playerUuid;
     }
 
+    /**
+     * Saved data file name ({@code soulsvault_<uuid>}) of a player's Casket.
+     */
     public static String getFileId(UUID playerUuid) {
         return Constants.MOD_ID + "_" + playerUuid.toString();
     }
 
+    /**
+     * The player's Casket file, loaded or created.
+     */
     public static ForgeVaultSavedData get(ServerPlayer player) {
         return get(player.server, player.getUUID());
     }
 
+    /**
+     * A player's Casket file by id (works for offline players), loaded or created.
+     */
     public static ForgeVaultSavedData get(MinecraftServer server, UUID playerUuid) {
         ServerLevel overworld = Objects.requireNonNull(server.overworld(), "Server overworld cannot be null");
         DimensionDataStorage storage = overworld.getDataStorage();

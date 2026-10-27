@@ -78,6 +78,9 @@ public final class ClientPartyCache {
             return this.id;
         }
 
+        /**
+         * Dimension of the latest report.
+         */
         public ResourceKey<Level> dimension() {
             return this.motion.dimension();
         }
@@ -91,6 +94,9 @@ public final class ClientPartyCache {
     private ClientPartyCache() {
     }
 
+    /**
+     * Applies a party sync from the server and notifies listeners (open party screens).
+     */
     public static void update(@Nullable PartySnapshot newSnapshot, List<PartyInvite> newInvites, long newPrivateItems) {
         snapshot = newSnapshot;
         invites = List.copyOf(newInvites);
@@ -100,12 +106,18 @@ public final class ClientPartyCache {
         }
     }
 
+    /**
+     * Forgets the party, equipment and positions (on disconnect).
+     */
     public static void reset() {
         EQUIPMENT.clear();
         TRACKED.clear();
         update(null, List.of(), 0L);
     }
 
+    /**
+     * Stores a teammate's worn gear for the HUD portrait.
+     */
     public static void handleEquipment(UUID member, List<ItemStack> equipment) {
         EQUIPMENT.put(member, List.copyOf(equipment));
     }
@@ -117,6 +129,9 @@ public final class ClientPartyCache {
         return EQUIPMENT.getOrDefault(member, List.of());
     }
 
+    /**
+     * Applies a full position report: listed teammates are updated, everyone else stops being tracked.
+     */
     public static void handlePositions(List<PacketS2CPartyPositions.Entry> entries) {
         long now = System.currentTimeMillis();
         Set<UUID> reported = new HashSet<>();
@@ -158,6 +173,9 @@ public final class ClientPartyCache {
         return privateCasketItems;
     }
 
+    /**
+     * Notified after every party sync.
+     */
     public static void addListener(Runnable listener) {
         LISTENERS.add(listener);
     }
@@ -166,6 +184,9 @@ public final class ClientPartyCache {
         LISTENERS.remove(listener);
     }
 
+    /**
+     * Opens the party GUI, returning to {@code parent} when it closes.
+     */
     public static void openScreen(@Nullable Screen parent, boolean invitesTab) {
         Minecraft.getInstance().setScreen(new PartyScreen(parent, invitesTab));
     }

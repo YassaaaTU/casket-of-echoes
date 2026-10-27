@@ -136,6 +136,9 @@ public final class VaultGridView implements ClientVaultCache.ChangeListener {
         return this.matchCache.computeIfAbsent(key, k -> this.query.test(info(k)));
     }
 
+    /**
+     * Re-filters and re-sorts the whole view (after a full sync, or a category / sort / search change).
+     */
     public void rebuild() {
         this.view.clear();
         for (VaultEntry entry : this.source.getEntries()) {

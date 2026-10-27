@@ -41,6 +41,12 @@ subprojects {
         it.options.release.set(Integer.parseInt(project.java_version))
     }
 
+    // Javadoc still checks HTML, syntax and references; self-explanatory getters and packet codecs stay undocumented
+    tasks.withType(Javadoc).configureEach {
+        it.options.encoding = 'UTF-8'
+        it.options.addBooleanOption('Xdoclint:all,-missing', true)
+    }
+
     processResources {
         def expandProps = [
                 'version'                    : project.version,

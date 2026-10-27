@@ -16,6 +16,9 @@ public final class VaultRules {
     private VaultRules() {
     }
 
+    /**
+     * Whether {@code key} may enter a Casket or the Keepsakes.
+     */
     public static boolean canStore(ItemKey key) {
         return getRejectionReason(key) == null;
     }

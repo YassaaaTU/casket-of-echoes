@@ -30,6 +30,9 @@ public record PartyView(
         return this.leader != null && this.leader.equals(player);
     }
 
+    /**
+     * Id of the party's shared Casket storage.
+     */
     public String storageId() {
         return "party:" + this.key;
     }

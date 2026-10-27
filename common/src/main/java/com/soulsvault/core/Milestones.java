@@ -29,6 +29,9 @@ public final class Milestones {
     private Milestones() {
     }
 
+    /**
+     * Grants the named advancement (and the root one) unless the player already has it.
+     */
     public static void award(ServerPlayer player, String name) {
         grant(player, ROOT);
         grant(player, name);

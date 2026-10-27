@@ -17,6 +17,9 @@ public final class PacketS2CSyncConfig {
         this.settings = settings;
     }
 
+    /**
+     * A snapshot of the settings currently in force on this server.
+     */
     public static PacketS2CSyncConfig fromCurrentConfig() {
         return new PacketS2CSyncConfig(SoulsVaultConfig.get());
     }

@@ -15,6 +15,9 @@ import java.util.UUID;
  */
 public final class PacketC2SPartyAction {
 
+    /**
+     * Party GUI requests; which fields each one uses is set by the factory methods below.
+     */
     public enum Action {
         CREATE,
         INVITE,
@@ -54,14 +57,24 @@ public final class PacketC2SPartyAction {
         this.settings = settings;
     }
 
+    /**
+     * An action without arguments (create, leave, disband, merge).
+     */
     public static PacketC2SPartyAction simple(Action action) {
         return new PacketC2SPartyAction(action, "", null, CasketJoinPolicy.MERGE, false, null);
     }
 
+    /**
+     * Invites an online player, proposing a casket policy for when the party shares its Casket.
+     */
     public static PacketC2SPartyAction invite(String playerName, CasketJoinPolicy policy) {
         return new PacketC2SPartyAction(Action.INVITE, playerName, null, policy, false, null);
     }
 
+    /**
+     * Accepts an invite with the chosen casket policy ({@code confirmedOverride} after the second "delete my
+     * Casket" confirmation).
+     */
     public static PacketC2SPartyAction accept(UUID partyId, CasketJoinPolicy policy, boolean confirmedOverride) {
         return new PacketC2SPartyAction(Action.ACCEPT, "", partyId, policy, confirmedOverride, null);
     }
@@ -77,10 +90,16 @@ public final class PacketC2SPartyAction {
         return new PacketC2SPartyAction(Action.DECLINE, "", partyId, CasketJoinPolicy.MERGE, false, null);
     }
 
+    /**
+     * A leader action on a member (kick, transfer leadership).
+     */
     public static PacketC2SPartyAction member(Action action, UUID member) {
         return new PacketC2SPartyAction(action, "", member, CasketJoinPolicy.MERGE, false, null);
     }
 
+    /**
+     * Saves the party name (built-in parties) and leader options.
+     */
     public static PacketC2SPartyAction saveSettings(String name, PartySettings settings) {
         return new PacketC2SPartyAction(Action.SAVE_SETTINGS, name, null, CasketJoinPolicy.MERGE, false, settings);
     }
