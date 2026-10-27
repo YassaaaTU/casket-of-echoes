@@ -1,9 +1,9 @@
 package com.soulsvault.party;
 
-import com.soulsvault.core.ItemKey;
 import com.soulsvault.network.PacketS2CPartyEquipment;
 import com.soulsvault.network.PacketS2CPartyPositions;
 import com.soulsvault.platform.Services;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -40,11 +40,17 @@ public final class PartyPresence {
     private PartyPresence() {
     }
 
+    /**
+     * Drops what was last sent to {@code viewer}, so everything is resent (re-login, party change).
+     */
     public static void forget(UUID viewer) {
         SENT_EQUIPMENT.remove(viewer);
         SENT_POSITIONS.remove(viewer);
     }
 
+    /**
+     * Sends changed teammate equipment and positions to every online party member; called every server tick.
+     */
     public static void tick(MinecraftServer server) {
         int tick = server.getTickCount();
         boolean equipment = tick % EQUIPMENT_INTERVAL_TICKS == 0;
@@ -102,14 +108,21 @@ public final class PartyPresence {
         Services.PLATFORM.sendToClient(viewer, new PacketS2CPartyPositions(entries));
     }
 
+    /**
+     * Hash of a teammate's gear that ignores durability, so a swinging sword does not resend equipment. Only a
+     * damaged item's tag is copied (to drop its damage); everything else is hashed in place.
+     */
     private static int signature(ServerPlayer member) {
         int hash = 1;
         for (EquipmentSlot slot : SLOTS) {
-            ItemStack stack = member.getItemBySlot(slot).copy();
-            if (stack.isDamageableItem()) {
-                stack.setDamageValue(0);
+            ItemStack stack = member.getItemBySlot(slot);
+            CompoundTag tag = stack.getTag();
+            if (tag != null && stack.isDamageableItem() && tag.contains(ItemStack.TAG_DAMAGE)) {
+                tag = tag.copy();
+                tag.remove(ItemStack.TAG_DAMAGE);
             }
-            hash = 31 * hash + ItemKey.fromStack(stack).hashCode();
+            hash = 31 * hash + System.identityHashCode(stack.getItem());
+            hash = 31 * hash + (tag != null && !tag.isEmpty() ? tag.hashCode() : 0);
         }
         return hash;
     }

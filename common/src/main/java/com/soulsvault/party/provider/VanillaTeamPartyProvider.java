@@ -7,18 +7,27 @@ import com.soulsvault.party.PartyRegistry;
 import com.soulsvault.party.PartyView;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.players.GameProfileCache;
 import net.minecraft.world.scores.PlayerTeam;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Vanilla scoreboard teams ({@code /team}) as parties. Teams have no owner, so operators manage their options.
  */
 public final class VanillaTeamPartyProvider implements PartyProvider {
+    /**
+     * Ids of offline team members by name, resolved off the server thread once per session: a name missing from the
+     * profile cache would otherwise trigger a blocking Mojang API lookup on every party refresh. Names that are not
+     * players (teams can hold entities) stay unresolved.
+     */
+    private final Map<String, Optional<UUID>> offlineIds = new ConcurrentHashMap<>();
 
     @Override
     public PartyProviderType type() {
@@ -72,15 +81,26 @@ public final class VanillaTeamPartyProvider implements PartyProvider {
     }
 
     @Nullable
-    private static UUID idOf(MinecraftServer server, String name) {
+    private UUID idOf(MinecraftServer server, String name) {
         ServerPlayer online = server.getPlayerList().getPlayerByName(name);
         if (online != null) {
             return online.getUUID();
         }
-        if (server.getProfileCache() == null) {
+        GameProfileCache cache = server.getProfileCache();
+        if (cache == null) {
             return null;
         }
-        Optional<GameProfile> profile = server.getProfileCache().get(name);
-        return profile.map(GameProfile::getId).orElse(null);
+        Optional<UUID> known = this.offlineIds.get(name);
+        if (known != null) {
+            return known.orElse(null);
+        }
+        this.offlineIds.put(name, Optional.empty());
+        try {
+            cache.getAsync(name, profile -> profile.ifPresent(found -> this.offlineIds.put(name, Optional.of(found.getId()))));
+        } catch (IllegalStateException e) {
+            // No executor yet (server still starting); retried on a later refresh
+            this.offlineIds.remove(name);
+        }
+        return null;
     }
 }

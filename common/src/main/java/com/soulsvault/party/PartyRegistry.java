@@ -7,7 +7,6 @@ import net.minecraft.nbt.Tag;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -125,10 +124,9 @@ public final class PartyRegistry {
         return partyId != null ? this.parties.get(partyId) : null;
     }
 
-    public Collection<BuiltinParty> getParties() {
-        return Collections.unmodifiableCollection(this.parties.values());
-    }
-
+    /**
+     * Creates a built-in party led by {@code leader} (also its first member), dropping their pending invites.
+     */
     public BuiltinParty create(UUID leader, String name) {
         BuiltinParty party = new BuiltinParty(UUID.randomUUID(), name, leader, PartySettings.DEFAULT);
         party.members.add(leader);
@@ -139,6 +137,9 @@ public final class PartyRegistry {
         return party;
     }
 
+    /**
+     * Adds a member and drops their pending invites.
+     */
     public void addMember(BuiltinParty party, UUID player) {
         if (!party.members.contains(player)) {
             party.members.add(player);
@@ -168,6 +169,9 @@ public final class PartyRegistry {
         return false;
     }
 
+    /**
+     * Deletes the party and every invite to it.
+     */
     public void disband(BuiltinParty party) {
         for (UUID member : party.members) {
             this.partyByMember.remove(member);
@@ -185,6 +189,9 @@ public final class PartyRegistry {
         }
     }
 
+    /**
+     * Renames the party and replaces its leader options.
+     */
     public void update(BuiltinParty party, String name, PartySettings settings) {
         party.name = name;
         party.settings = settings;
@@ -193,6 +200,9 @@ public final class PartyRegistry {
 
     // ------------------------------------------------------------------------------------------------ external
 
+    /**
+     * Leader options stored for a party from another mod (defaults until its leader saves some).
+     */
     public PartySettings getExternalSettings(String partyKey) {
         return this.externalSettings.getOrDefault(partyKey, PartySettings.EXTERNAL_DEFAULT);
     }
@@ -204,10 +214,16 @@ public final class PartyRegistry {
 
     // ------------------------------------------------------------------------------------------------ covenants
 
+    /**
+     * Live Covenants and their last known leaders (a copy).
+     */
     public Map<String, UUID> getCovenants() {
         return Collections.unmodifiableMap(new LinkedHashMap<>(this.covenants));
     }
 
+    /**
+     * Records that the party has a live Covenant Casket, and its latest leader (who receives unclaimed items).
+     */
     public void markCovenant(String partyKey, @Nullable UUID leader) {
         UUID previous = this.covenants.get(partyKey);
         UUID next = leader != null ? leader : previous;
@@ -217,6 +233,9 @@ public final class PartyRegistry {
         }
     }
 
+    /**
+     * Forgets a dissolved Covenant.
+     */
     public void unmarkCovenant(String partyKey) {
         if (this.covenants.remove(partyKey) != null) {
             markDirty();
@@ -225,6 +244,9 @@ public final class PartyRegistry {
 
     // ------------------------------------------------------------------------------------------------ invites
 
+    /**
+     * The player's unexpired invites, oldest first.
+     */
     public List<PartyInvite> getInvites(UUID player) {
         List<PartyInvite> list = this.invites.get(player);
         if (list == null) {
@@ -234,12 +256,18 @@ public final class PartyRegistry {
         return List.copyOf(list);
     }
 
+    /**
+     * Adds an invite, replacing an older one from the same party.
+     */
     public void addInvite(UUID invitee, PartyInvite invite) {
         List<PartyInvite> list = this.invites.computeIfAbsent(invitee, id -> new ArrayList<>());
         list.removeIf(existing -> existing.partyId().equals(invite.partyId()) || existing.isExpired());
         list.add(invite);
     }
 
+    /**
+     * Removes and returns the player's unexpired invite from {@code partyId}, if any.
+     */
     @Nullable
     public PartyInvite takeInvite(UUID invitee, UUID partyId) {
         List<PartyInvite> list = this.invites.get(invitee);
@@ -253,13 +281,6 @@ public final class PartyRegistry {
             }
         }
         return null;
-    }
-
-    public void removeInvite(UUID invitee, UUID partyId) {
-        List<PartyInvite> list = this.invites.get(invitee);
-        if (list != null) {
-            list.removeIf(invite -> invite.partyId().equals(partyId));
-        }
     }
 
     // ------------------------------------------------------------------------------------------------ persistence

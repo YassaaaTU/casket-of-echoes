@@ -50,17 +50,12 @@ public final class CovenantService {
         return Services.PLATFORM.getSharedStorage(server, storageId);
     }
 
+    /**
+     * Whether the player joined the party's Covenant (made their casket choice).
+     */
     public static boolean isMember(MinecraftServer server, PartyView party, UUID player) {
         CovenantLedger ledger = storageOf(server, party.storageId()).getLedger();
         return ledger != null && ledger.isMember(player);
-    }
-
-    /**
-     * Whether the player is in a sharing party but has not chosen what happens to their own Casket yet.
-     */
-    public static boolean isPending(MinecraftServer server, UUID player) {
-        PartyView party = PartyService.getParty(server, player);
-        return party != null && PartyService.sharesCasket(party) && !isMember(server, party, player);
     }
 
     // ------------------------------------------------------------------------------------------------ join
@@ -296,6 +291,9 @@ public final class CovenantService {
         }
     }
 
+    /**
+     * Tells a member of a sharing party to choose what happens to their own Casket (clickable link to the GUI).
+     */
     public static void prompt(ServerPlayer player, PartyView party) {
         MutableComponent open = Component.translatable("gui.soulsvault.party.invite.open")
                 .withStyle(Style.EMPTY.withColor(ChatFormatting.GOLD).withUnderlined(true)
@@ -307,6 +305,9 @@ public final class CovenantService {
         PartyService.forceSync(player);
     }
 
+    /**
+     * Lets the player be prompted again next session.
+     */
     public static void forget(UUID player) {
         PROMPTED.remove(player);
     }
