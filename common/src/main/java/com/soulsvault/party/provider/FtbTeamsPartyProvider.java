@@ -92,7 +92,10 @@ public final class FtbTeamsPartyProvider implements PartyProvider {
             UUID teamId = (UUID) this.getTeamIdMethod.invoke(value);
             Component name = (Component) this.getNameMethod.invoke(value);
             UUID owner = (UUID) this.getOwnerMethod.invoke(value);
-            List<UUID> members = new ArrayList<>((Collection<UUID>) this.getMembersMethod.invoke(value));
+            List<UUID> members = new ArrayList<>();
+            for (Object member : (Collection<?>) this.getMembersMethod.invoke(value)) {
+                members.add((UUID) member);
+            }
             if (owner != null && members.remove(owner)) {
                 members.add(0, owner);
             }

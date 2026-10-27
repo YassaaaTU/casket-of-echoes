@@ -6,7 +6,6 @@ import com.google.gson.JsonObject;
 import com.soulsvault.Constants;
 import com.soulsvault.config.SoulsVaultConfig;
 import com.soulsvault.platform.Services;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -57,12 +56,18 @@ public final class EquipLoad {
             EquipmentSlot.FEET
     };
 
+    /**
+     * Load bands shown on the meter.
+     */
     public enum Tier {
         LIGHT,
         MEDIUM,
         HEAVY,
         OVERLOADED;
 
+        /**
+         * The band for {@code load / capacity}.
+         */
         public static Tier of(double ratio) {
             if (ratio > 1.0D) {
                 return OVERLOADED;
@@ -74,6 +79,9 @@ public final class EquipLoad {
         }
     }
 
+    /**
+     * A player's summed gear weight and carrying capacity.
+     */
     public record Result(double load, double capacity) {
         public static final Result NONE = new Result(0.0D, 0.0D);
 
@@ -96,6 +104,10 @@ public final class EquipLoad {
     private EquipLoad() {
     }
 
+    /**
+     * Weight of one worn item: datapack item entry, then tag entry, then Epic Fight's weight, then a fallback
+     * derived from its armor or attack stats.
+     */
     public static double weightOf(ItemStack stack, EquipmentSlot slot) {
         if (stack.isEmpty()) {
             return 0.0D;
@@ -142,6 +154,9 @@ public final class EquipLoad {
         return sum;
     }
 
+    /**
+     * Sums the weight of hands, armor and Curios against the player's capacity.
+     */
     public static Result compute(ServerPlayer player) {
         double load = 0.0D;
         for (EquipmentSlot slot : WORN_SLOTS) {
@@ -218,7 +233,7 @@ public final class EquipLoad {
                             ));
                         } else {
                             ResourceLocation itemId = new ResourceLocation(GsonHelper.getAsString(entry, "item"));
-                            BuiltInRegistries.ITEM.getOptional(itemId).ifPresent(item -> items.put(item, weight));
+                            RegistryLookups.item(itemId).ifPresent(item -> items.put(item, weight));
                         }
                     }
                 } catch (RuntimeException e) {

@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.soulsvault.Constants;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -41,6 +40,9 @@ public final class ReplenishCaps {
      * One cap: item ids and item tags that share {@code maxCarried}.
      */
     public record Rule(ResourceLocation id, Set<Item> items, List<TagKey<Item>> tags, int maxCarried) {
+        /**
+         * Whether the item is one of this rule's items or in one of its tags.
+         */
         public boolean matches(ItemKey key) {
             if (key.isEmpty()) {
                 return false;
@@ -57,6 +59,9 @@ public final class ReplenishCaps {
             return false;
         }
 
+        /**
+         * How many matching items the 36 main inventory slots hold.
+         */
         public int countCarried(Inventory inventory) {
             int total = 0;
             for (ItemStack stack : inventory.items) {
@@ -73,6 +78,9 @@ public final class ReplenishCaps {
     private ReplenishCaps() {
     }
 
+    /**
+     * The caps loaded from the current datapacks.
+     */
     public static List<Rule> getRules() {
         return rules;
     }
@@ -100,7 +108,7 @@ public final class ReplenishCaps {
                             tags.add(TagKey.create(Registries.ITEM, new ResourceLocation(value.substring(1))));
                         } else {
                             ResourceLocation itemId = new ResourceLocation(value);
-                            BuiltInRegistries.ITEM.getOptional(itemId).ifPresentOrElse(
+                            RegistryLookups.item(itemId).ifPresentOrElse(
                                     items::add,
                                     () -> Constants.LOG.debug("Replenish cap {} skips unknown item {}", file.getKey(), itemId)
                             );

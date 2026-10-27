@@ -23,6 +23,9 @@ public final class Keepsakes {
     private static final String NBT_KEY = "Key";
     private static final String NBT_COUNT = "Count";
 
+    /**
+     * What using a Keepsake Coffer did.
+     */
     public enum CofferResult {
         UNLOCKED,
         UPGRADED,
@@ -40,6 +43,9 @@ public final class Keepsakes {
         };
     }
 
+    /**
+     * Whether the Keepsakes can be used (unlocked, or {@code keepsakes.requireUnlock} is off).
+     */
     public boolean isUnlocked() {
         return this.unlocked || !SoulsVaultConfig.keepsakes().requireUnlock();
     }
@@ -61,13 +67,16 @@ public final class Keepsakes {
     }
 
     public long getCapacity(ItemKey key) {
-        return (long) Math.max(1, key.getItem().getMaxStackSize()) * getStacks();
+        return (long) key.getMaxStackSize() * getStacks();
     }
 
     public long getCount(ItemKey key) {
         return this.items.getOrDefault(key, 0L);
     }
 
+    /**
+     * Kinds of items currently kept.
+     */
     public int usedSlots() {
         return this.items.size();
     }

@@ -19,8 +19,11 @@ public record ItemPrefs(boolean favorite, boolean autoRefill, int refillTarget, 
         refillTarget = Math.max(1, refillTarget);
     }
 
+    /**
+     * No pins, carry cap of one stack.
+     */
     public static ItemPrefs defaultsFor(ItemKey key) {
-        return new ItemPrefs(false, false, key.isEmpty() ? 1 : Math.max(1, key.getItem().getMaxStackSize()), false);
+        return new ItemPrefs(false, false, key.getMaxStackSize(), false);
     }
 
     /**
@@ -48,6 +51,9 @@ public record ItemPrefs(boolean favorite, boolean autoRefill, int refillTarget, 
         return tag;
     }
 
+    /**
+     * The item a {@link #toTag(ItemKey)} entry belongs to.
+     */
     public static ItemKey keyFromTag(CompoundTag tag) {
         return ItemKey.fromTag(tag.getCompound(NBT_KEY));
     }

@@ -1,6 +1,5 @@
 package com.soulsvault.core;
 
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -21,13 +20,16 @@ public final class InventorySorter {
 
     private static final Comparator<ItemStack> ORDER = Comparator
             .comparing((ItemStack stack) -> VaultCategory.classify(stack).ordinal())
-            .thenComparing(stack -> BuiltInRegistries.ITEM.getKey(stack.getItem()).toString())
+            .thenComparing(stack -> RegistryLookups.itemId(stack.getItem()).toString())
             .thenComparingInt(ItemStack::getDamageValue)
             .thenComparing(Comparator.comparingInt(ItemStack::getCount).reversed());
 
     private InventorySorter() {
     }
 
+    /**
+     * Merges and sorts the player's 27 main inventory slots in place.
+     */
     public static void sortMainInventory(Player player) {
         Inventory inventory = player.getInventory();
         List<ItemStack> merged = new ArrayList<>();

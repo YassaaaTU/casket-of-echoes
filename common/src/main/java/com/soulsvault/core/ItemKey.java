@@ -14,7 +14,6 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Objects;
-import java.util.Optional;
 
 /**
  * Immutable deduplication key encapsulating {@code (Item, Optional<CompoundTag>)} with a precomputed hash.
@@ -34,6 +33,7 @@ public final class ItemKey {
     private final CompoundTag tag;
     private final int cachedHash;
     private volatile int nbtSizeBytes = -1;
+    private volatile int maxStackSize;
 
     public ItemKey(Item item, @Nullable CompoundTag tag) {
         this.item = Objects.requireNonNull(item, "item cannot be null");
@@ -42,10 +42,13 @@ public final class ItemKey {
     }
 
     private static int computeHash(Item item, @Nullable CompoundTag tag) {
-        ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
+        ResourceLocation id = RegistryLookups.itemId(item);
         return 31 * id.hashCode() + (tag != null ? tag.hashCode() : 0);
     }
 
+    /**
+     * The key of {@code stack} ({@link #EMPTY} for an empty stack); its NBT is copied.
+     */
     public static ItemKey fromStack(ItemStack stack) {
         if (stack == null || stack.isEmpty()) {
             return EMPTY;
@@ -61,10 +64,16 @@ public final class ItemKey {
         return this.item;
     }
 
+    /**
+     * The item's registry id.
+     */
     public ResourceLocation getRegistryId() {
-        return BuiltInRegistries.ITEM.getKey(this.item);
+        return RegistryLookups.itemId(this.item);
     }
 
+    /**
+     * Namespace (mod id) of the item.
+     */
     public String getNamespace() {
         return getRegistryId().getNamespace();
     }
@@ -105,13 +114,6 @@ public final class ItemKey {
     }
 
     /**
-     * Returns an {@link Optional} containing a defensive copy of the underlying NBT tag.
-     */
-    public Optional<CompoundTag> getOptionalTag() {
-        return Optional.ofNullable(getTag());
-    }
-
-    /**
      * Creates a new {@link ItemStack} with the given count and a cloned copy of this key's NBT tag.
      */
     public ItemStack toStack(int count) {
@@ -125,8 +127,24 @@ public final class ItemKey {
         return stack;
     }
 
+    /**
+     * A new one-item stack of this key.
+     */
     public ItemStack toSingleStack() {
         return toStack(1);
+    }
+
+    /**
+     * Largest stack this item forms, computed once from a real stack so loader hooks that size stacks by their NBT
+     * are honoured (always at least 1).
+     */
+    public int getMaxStackSize() {
+        int cached = this.maxStackSize;
+        if (cached <= 0) {
+            cached = isEmpty() ? 1 : Math.max(1, toSingleStack().getMaxStackSize());
+            this.maxStackSize = cached;
+        }
+        return cached;
     }
 
     /**
@@ -146,6 +164,9 @@ public final class ItemKey {
         return Objects.equals(this.tag, stackTag);
     }
 
+    /**
+     * Save format: the item id plus its NBT, if any.
+     */
     public CompoundTag toTag() {
         CompoundTag out = new CompoundTag();
         out.putString(NBT_ITEM, getRegistryId().toString());
@@ -155,6 +176,9 @@ public final class ItemKey {
         return out;
     }
 
+    /**
+     * Reads {@link #toTag()} output; items that no longer exist (mod removed) read as {@link #EMPTY}.
+     */
     public static ItemKey fromTag(CompoundTag nbt) {
         if (nbt == null || !nbt.contains(NBT_ITEM)) {
             return EMPTY;
@@ -163,8 +187,8 @@ public final class ItemKey {
         if (id == null) {
             return EMPTY;
         }
-        Item item = BuiltInRegistries.ITEM.getOptional(id).orElse(Items.AIR);
-        if (item == Items.AIR) {
+        Item item = RegistryLookups.item(id).orElse(null);
+        if (item == null) {
             return EMPTY;
         }
         CompoundTag itemTag = nbt.contains(NBT_TAG, CompoundTag.TAG_COMPOUND)
@@ -173,11 +197,13 @@ public final class ItemKey {
         return new ItemKey(item, itemTag);
     }
 
+    @SuppressWarnings("deprecation") // Forge deprecates vanilla registry access; network ids are loader-neutral
     public void toNetwork(FriendlyByteBuf buf) {
         buf.writeId(BuiltInRegistries.ITEM, this.item);
         buf.writeNbt(this.tag);
     }
 
+    @SuppressWarnings("deprecation") // Forge deprecates vanilla registry access; network ids are loader-neutral
     public static ItemKey fromNetwork(FriendlyByteBuf buf) {
         Item item = buf.readById(BuiltInRegistries.ITEM);
         CompoundTag tag = buf.readNbt();

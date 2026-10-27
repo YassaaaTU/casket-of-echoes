@@ -50,6 +50,7 @@ public final class PartyPortraits {
      *
      * @return {@code false} when the portrait could not be drawn (draw a face instead)
      */
+    @SuppressWarnings("deprecation") // runAsFancy: what vanilla's inventory entity renderer uses; no replacement in 1.20.1
     public static boolean render(GuiGraphics graphics, PartySnapshot.Member member, int centerX, int feetY, int scale) {
         Minecraft mc = Minecraft.getInstance();
         if (failed || mc.level == null) {

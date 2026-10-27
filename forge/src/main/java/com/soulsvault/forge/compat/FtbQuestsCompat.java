@@ -38,6 +38,9 @@ public final class FtbQuestsCompat {
     private FtbQuestsCompat() {
     }
 
+    /**
+     * Hooks FTB Quests' quest-completed event when FTB Quests is installed; runs once during common setup.
+     */
     public static void init() {
         if (ModList.get() == null || !ModList.get().isLoaded(MOD_ID)) {
             return;
@@ -143,8 +146,10 @@ public final class FtbQuestsCompat {
         try {
             Object quest = getQuestMethod.invoke(event);
             Object completedData = getDataMethod.invoke(event);
-            @SuppressWarnings("unchecked")
-            List<ServerPlayer> completers = (List<ServerPlayer>) getOnlineMembersMethod.invoke(event);
+            List<ServerPlayer> completers = new ArrayList<>();
+            for (Object member : (List<?>) getOnlineMembersMethod.invoke(event)) {
+                completers.add((ServerPlayer) member);
+            }
             List<ServerPlayer> targets = new ArrayList<>();
             for (ServerPlayer completer : completers) {
                 for (ServerPlayer target : PartyService.questShareTargets(completer)) {

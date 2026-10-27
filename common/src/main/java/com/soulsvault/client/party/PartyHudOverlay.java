@@ -5,6 +5,7 @@ import com.soulsvault.config.SoulsVaultClientConfig;
 import com.soulsvault.config.SoulsVaultClientConfig.HudAnchor;
 import com.soulsvault.config.SoulsVaultClientConfig.PartyHudStyle;
 import com.soulsvault.config.SoulsVaultClientConfig.PortraitMode;
+import com.soulsvault.core.RegistryLookups;
 import com.soulsvault.party.PartySnapshot;
 import com.soulsvault.platform.Services;
 import net.minecraft.client.Minecraft;
@@ -14,7 +15,6 @@ import net.minecraft.client.gui.components.PlayerFaceRenderer;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.DefaultPlayerSkin;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
@@ -55,6 +55,9 @@ public final class PartyHudOverlay {
     private PartyHudOverlay() {
     }
 
+    /**
+     * Draws the party frames; registered as a HUD layer by the loader.
+     */
     public static void render(GuiGraphics graphics, float partialTick, int screenWidth, int screenHeight) {
         Minecraft mc = Minecraft.getInstance();
         SoulsVaultClientConfig.Settings config = SoulsVaultClientConfig.get();
@@ -234,8 +237,7 @@ public final class PartyHudOverlay {
         boolean blinkOff = (System.currentTimeMillis() / 250L) % 2L == 0L;
         int drawn = 0;
         for (PartySnapshot.Effect effect : member.effects()) {
-            ResourceLocation id = ResourceLocation.tryParse(effect.id());
-            MobEffect mobEffect = id != null ? BuiltInRegistries.MOB_EFFECT.get(id) : null;
+            MobEffect mobEffect = RegistryLookups.mobEffect(ResourceLocation.tryParse(effect.id()));
             if (mobEffect == null) {
                 continue;
             }

@@ -12,6 +12,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 
+import javax.annotation.Nullable;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -38,10 +39,17 @@ public final class SoulsVaultApi {
         }
     }
 
+    /**
+     * Every registered Build Echo slot type, in registration order (read-only view).
+     */
     public static synchronized Collection<EchoSlotType> getEchoSlotTypes() {
         return Collections.unmodifiableCollection(ECHO_SLOT_TYPES.values());
     }
 
+    /**
+     * The slot type registered under {@code id}, or {@code null}.
+     */
+    @Nullable
     public static synchronized EchoSlotType getEchoSlotType(ResourceLocation id) {
         return ECHO_SLOT_TYPES.get(id);
     }
@@ -72,6 +80,7 @@ public final class SoulsVaultApi {
     /**
      * Why the player may not use their Casket's storage right now (combat lock, pack rules), or {@code null}.
      */
+    @Nullable
     public static Component getAccessDenialReason(ServerPlayer player) {
         return VaultAccess.check(player, VaultAccess.Type.VAULT, false);
     }
