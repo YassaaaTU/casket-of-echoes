@@ -8,7 +8,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 
 import javax.annotation.Nullable;
@@ -39,34 +38,20 @@ public final class VaultItemSlotWidget extends AbstractWidget {
     private ItemStack displayStack = ItemStack.EMPTY;
     private long count;
     private boolean selected;
-    @Nullable
-    private ResourceLocation emptyIcon;
-    @Nullable
-    private BiConsumer<VaultItemSlotWidget, Integer> clickHandler;
+    private final BiConsumer<VaultItemSlotWidget, Integer> clickHandler;
 
-    public VaultItemSlotWidget(int x, int y, int size) {
-        this(x, y, size, null);
-    }
-
-    public VaultItemSlotWidget(
-            int x,
-            int y,
-            int size,
-            @Nullable BiConsumer<VaultItemSlotWidget, Integer> clickHandler
-    ) {
+    /**
+     * @param clickHandler receives this widget and the mouse button (0 left, 1 right, 2 middle; Enter/Space click 0)
+     */
+    public VaultItemSlotWidget(int x, int y, int size, BiConsumer<VaultItemSlotWidget, Integer> clickHandler) {
         super(x, y, size, size, Component.empty());
         this.size = size;
         this.clickHandler = clickHandler;
     }
 
-    public void setClickHandler(@Nullable BiConsumer<VaultItemSlotWidget, Integer> clickHandler) {
-        this.clickHandler = clickHandler;
-    }
-
-    public void setEmptyIcon(@Nullable ResourceLocation emptyIcon) {
-        this.emptyIcon = emptyIcon;
-    }
-
+    /**
+     * Shows {@code entry} (or nothing for {@code null}); the display stack is built once here, not per frame.
+     */
     public void bindVaultEntry(@Nullable VaultEntry entry, boolean selected) {
         this.entry = entry;
         if (entry != null && !entry.getKey().isEmpty()) {
@@ -81,35 +66,16 @@ public final class VaultItemSlotWidget extends AbstractWidget {
         this.selected = selected;
     }
 
-    public void bindItemStack(ItemStack stack, boolean selected) {
-        this.entry = null;
-        if (stack != null && !stack.isEmpty()) {
-            this.displayStack = stack;
-            this.count = stack.getCount();
-            this.setMessage(this.displayStack.getHoverName());
-        } else {
-            this.displayStack = ItemStack.EMPTY;
-            this.count = 0L;
-            this.setMessage(Component.empty());
-        }
-        this.selected = selected;
-    }
-
-    public int getSize() {
-        return this.size;
-    }
-
     @Nullable
     public VaultEntry getEntry() {
         return this.entry;
     }
 
+    /**
+     * The bound item as a one-item stack (shared, do not modify), or empty.
+     */
     public ItemStack getDisplayStack() {
         return this.displayStack;
-    }
-
-    public long getCount() {
-        return this.count;
     }
 
     public boolean isEmpty() {
@@ -126,7 +92,7 @@ public final class VaultItemSlotWidget extends AbstractWidget {
         if (!this.active || !this.visible) {
             return false;
         }
-        if (this.clicked(mouseX, mouseY) && isValidClickButton(button) && this.clickHandler != null) {
+        if (this.clicked(mouseX, mouseY) && isValidClickButton(button)) {
             this.clickHandler.accept(this, button);
             return true;
         }
@@ -135,7 +101,7 @@ public final class VaultItemSlotWidget extends AbstractWidget {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (!this.active || !this.visible || !this.isFocused() || this.clickHandler == null) {
+        if (!this.active || !this.visible || !this.isFocused()) {
             return false;
         }
         if (keyCode == InputConstants.KEY_RETURN || keyCode == InputConstants.KEY_NUMPADENTER || keyCode == InputConstants.KEY_SPACE) {
@@ -161,9 +127,6 @@ public final class VaultItemSlotWidget extends AbstractWidget {
         int iconY = y + (this.size - 16) / 2;
 
         if (this.displayStack.isEmpty()) {
-            if (this.emptyIcon != null) {
-                graphics.blit(this.emptyIcon, iconX, iconY, 0, 0, 16, 16, 16, 16);
-            }
             return;
         }
 
@@ -212,6 +175,9 @@ public final class VaultItemSlotWidget extends AbstractWidget {
         defaultButtonNarrationText(narrationElementOutput);
     }
 
+    /**
+     * Draws a 1px rectangle outline (the gothic frame used across the Casket UI).
+     */
     public static void drawBorder(GuiGraphics graphics, int x, int y, int width, int height, int color) {
         graphics.fill(x, y, x + width, y + 1, color);
         graphics.fill(x, y + height - 1, x + width, y + height, color);
@@ -219,6 +185,9 @@ public final class VaultItemSlotWidget extends AbstractWidget {
         graphics.fill(x + width - 1, y, x + width, y + height, color);
     }
 
+    /**
+     * Short stack count for slot corners: {@code 999}, {@code 4.2k}, {@code 10k}, {@code 1.5M}.
+     */
     public static String formatCompactCount(long count) {
         if (count < 1000L) {
             return Long.toString(count);

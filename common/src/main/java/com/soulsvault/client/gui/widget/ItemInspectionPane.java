@@ -22,6 +22,7 @@ import net.minecraft.client.renderer.entity.ItemRenderer;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.TextColor;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Mth;
@@ -41,11 +42,20 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Detailed Dark Souls / Elden Ring style item inspection pane (toggled via 'R').
+ * Detailed Dark Souls / Elden Ring style item inspection pane (toggled with the Inspect key).
  * Displays a 3D rotating item preview, durability bar, weapon/armor attributes,
  * platform compat stats (Epic Fight), scrollable lore lines, and inline Favorite / Auto-Refill controls.
+ * <p>
+ * Tooltip, attribute and compat lines are expensive (mods add tooltip handlers), so they are rebuilt only when the
+ * inspected item changes and a few times a second after that, never every frame.
  */
 public final class ItemInspectionPane {
+    /** How long built detail lines are reused; short enough that Shift / advanced-tooltip changes show quickly. */
+    private static final long DETAIL_REFRESH_MILLIS = 250L;
+    private static final EquipmentSlot[] ARMOR_SLOTS = {
+            EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET, EquipmentSlot.OFFHAND
+    };
+
     private static final int COLOR_PANEL_BG = 0xEE0D0B0E;
     private static final int COLOR_PEDESTAL_BG = 0xF2151218;
     private static final int COLOR_BRONZE = 0xFF8C7853;
@@ -62,6 +72,10 @@ public final class ItemInspectionPane {
     private final int height;
 
     private ItemKey inspectedKey = ItemKey.EMPTY;
+    private ItemStack inspectedStack = ItemStack.EMPTY;
+    private List<FormattedCharSequence> detailLines = List.of();
+    private int titleColor = COLOR_GOLD;
+    private long detailsBuiltAt;
     private int loreScrollOffset = 0;
     private final List<InlineButton> buttons = new ArrayList<>();
 
@@ -77,12 +91,10 @@ public final class ItemInspectionPane {
         ItemKey normalized = key != null ? key : ItemKey.EMPTY;
         if (!this.inspectedKey.equals(normalized)) {
             this.inspectedKey = normalized;
+            this.inspectedStack = normalized.toSingleStack();
+            this.detailsBuiltAt = 0L;
             this.loreScrollOffset = 0;
         }
-    }
-
-    public ItemKey getInspectedKey() {
-        return this.inspectedKey;
     }
 
     private void rebuildButtons() {
@@ -151,7 +163,7 @@ public final class ItemInspectionPane {
         VaultEntry entry = getCurrentEntry();
         boolean currentRefill = entry != null && entry.isAutoRefill();
         boolean currentOverflow = entry != null && entry.isOverflowDeposit();
-        int target = entry != null ? entry.getRefillTarget() : Math.max(1, this.inspectedKey.getItem().getMaxStackSize());
+        int target = entry != null ? entry.getRefillTarget() : this.inspectedKey.getMaxStackSize();
         Services.PLATFORM.sendToServer(PacketC2SVaultAction.setRefillTarget(
                 this.inspectedKey,
                 target,
@@ -167,7 +179,7 @@ public final class ItemInspectionPane {
         VaultEntry entry = getCurrentEntry();
         boolean currentRefill = entry != null && entry.isAutoRefill();
         boolean currentOverflow = entry != null && entry.isOverflowDeposit();
-        int target = entry != null ? entry.getRefillTarget() : Math.max(1, this.inspectedKey.getItem().getMaxStackSize());
+        int target = entry != null ? entry.getRefillTarget() : this.inspectedKey.getMaxStackSize();
         Services.PLATFORM.sendToServer(PacketC2SVaultAction.setRefillTarget(
                 this.inspectedKey,
                 target,
@@ -181,9 +193,9 @@ public final class ItemInspectionPane {
             return;
         }
         VaultEntry entry = getCurrentEntry();
-        boolean currentRefill = entry != null ? entry.isAutoRefill() : true;
+        boolean currentRefill = entry == null || entry.isAutoRefill();
         boolean currentOverflow = entry != null && entry.isOverflowDeposit();
-        int currentTarget = entry != null ? entry.getRefillTarget() : Math.max(1, this.inspectedKey.getItem().getMaxStackSize());
+        int currentTarget = entry != null ? entry.getRefillTarget() : this.inspectedKey.getMaxStackSize();
         int nextTarget = Mth.clamp(currentTarget + delta, 1, 999);
         Services.PLATFORM.sendToServer(PacketC2SVaultAction.setRefillTarget(
                 this.inspectedKey,
@@ -198,9 +210,9 @@ public final class ItemInspectionPane {
             return;
         }
         VaultEntry entry = getCurrentEntry();
-        boolean currentRefill = entry != null ? entry.isAutoRefill() : true;
+        boolean currentRefill = entry == null || entry.isAutoRefill();
         boolean currentOverflow = entry != null && entry.isOverflowDeposit();
-        int maxStack = Math.max(1, this.inspectedKey.getItem().getMaxStackSize());
+        int maxStack = this.inspectedKey.getMaxStackSize();
         Services.PLATFORM.sendToServer(PacketC2SVaultAction.setRefillTarget(
                 this.inspectedKey,
                 maxStack,
@@ -209,6 +221,11 @@ public final class ItemInspectionPane {
         ));
     }
 
+    /**
+     * Handles clicks on the inline Favorite / Auto-Refill / carry cap buttons.
+     *
+     * @return whether a button consumed the click
+     */
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button != 0 || this.inspectedKey.isEmpty()) {
             return false;
@@ -223,6 +240,9 @@ public final class ItemInspectionPane {
         return false;
     }
 
+    /**
+     * Scrolls the attribute and lore lines while the mouse is over the pane.
+     */
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
         if (mouseX >= this.x && mouseX < this.x + this.width && mouseY >= this.y && mouseY < this.y + this.height) {
             int step = delta > 0 ? -1 : 1;
@@ -232,6 +252,9 @@ public final class ItemInspectionPane {
         return false;
     }
 
+    /**
+     * Draws the pane for the inspected item, or a hint when nothing is selected.
+     */
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         Minecraft mc = Minecraft.getInstance();
         Font font = mc.font;
@@ -258,7 +281,12 @@ public final class ItemInspectionPane {
             return;
         }
 
-        ItemStack stack = this.inspectedKey.toSingleStack();
+        ItemStack stack = this.inspectedStack;
+        long now = System.currentTimeMillis();
+        if (now - this.detailsBuiltAt >= DETAIL_REFRESH_MILLIS) {
+            rebuildDetails(mc, font, stack);
+            this.detailsBuiltAt = now;
+        }
         VaultEntry entry = getCurrentEntry();
         long storedCount = entry != null ? entry.getCount() : 0L;
         int carriedCount = mc.player != null
@@ -280,11 +308,9 @@ public final class ItemInspectionPane {
         int infoW = this.width - pedSize - 18;
         int cursorY = pedY + 1;
 
-        // Item Title (truncated cleanly if needed)
-        Integer rarityColor = stack.getRarity().color.getColor();
-        int titleColor = rarityColor != null ? (0xFF000000 | rarityColor) : COLOR_GOLD;
+        // Item Title (truncated cleanly if needed), coloured like the item's own tooltip title (rarity)
         String title = font.plainSubstrByWidth(stack.getHoverName().getString(), infoW);
-        graphics.drawString(font, title, infoX, cursorY, titleColor, true);
+        graphics.drawString(font, title, infoX, cursorY, this.titleColor, true);
         cursorY += 10;
 
         // Category & Mod Namespace
@@ -327,14 +353,8 @@ public final class ItemInspectionPane {
         int controlsTop = this.y + this.height - 46;
         graphics.fill(this.x + 6, bodyTop - 2, this.x + this.width - 6, bodyTop - 1, COLOR_BRONZE_MUTED);
 
-        // Collect Attributes + Lore lines into scrollable body area
-        List<Component> detailLines = collectAttributeAndLoreLines(mc, stack);
-        List<FormattedCharSequence> wrappedLines = new ArrayList<>();
-        int wrapWidth = this.width - 14;
-        for (Component comp : detailLines) {
-            wrappedLines.addAll(font.split(comp, wrapWidth));
-        }
-
+        // Attributes + Lore lines in a scrollable body area
+        List<FormattedCharSequence> wrappedLines = this.detailLines;
         int availableBodyH = Math.max(12, controlsTop - bodyTop - 4);
         int maxVisibleLines = Math.max(1, availableBodyH / (font.lineHeight + 1));
         int maxScroll = Math.max(0, wrappedLines.size() - maxVisibleLines);
@@ -365,7 +385,23 @@ public final class ItemInspectionPane {
         }
     }
 
-    private List<Component> collectAttributeAndLoreLines(Minecraft mc, ItemStack stack) {
+    /**
+     * Rebuilds the wrapped attribute and lore lines and the title colour for {@code stack}.
+     */
+    private void rebuildDetails(Minecraft mc, Font font, ItemStack stack) {
+        List<Component> tooltip = stack.getTooltipLines(mc.player, TooltipFlag.Default.NORMAL);
+        TextColor color = tooltip.isEmpty() ? null : tooltip.get(0).getStyle().getColor();
+        this.titleColor = color != null ? 0xFF000000 | color.getValue() : COLOR_GOLD;
+
+        List<FormattedCharSequence> wrapped = new ArrayList<>();
+        int wrapWidth = this.width - 14;
+        for (Component line : collectAttributeAndLoreLines(stack, tooltip)) {
+            wrapped.addAll(font.split(line, wrapWidth));
+        }
+        this.detailLines = wrapped;
+    }
+
+    private static List<Component> collectAttributeAndLoreLines(ItemStack stack, List<Component> tooltip) {
         List<Component> lines = new ArrayList<>();
 
         // 1. Extract combat & armor attributes
@@ -373,7 +409,7 @@ public final class ItemInspectionPane {
         double attackSpeed = getAttributeSum(stack, EquipmentSlot.MAINHAND, Attributes.ATTACK_SPEED);
         double armor = 0.0D;
         double toughness = 0.0D;
-        for (EquipmentSlot slot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET, EquipmentSlot.OFFHAND}) {
+        for (EquipmentSlot slot : ARMOR_SLOTS) {
             armor += getAttributeSum(stack, slot, Attributes.ARMOR);
             toughness += getAttributeSum(stack, slot, Attributes.ARMOR_TOUGHNESS);
         }
@@ -401,7 +437,6 @@ public final class ItemInspectionPane {
         }
 
         // 2. Append full item tooltip & lore lines (skipping line 0 which is the item title)
-        List<Component> tooltip = stack.getTooltipLines(mc.player, TooltipFlag.Default.NORMAL);
         if (tooltip.size() > 1) {
             lines.add(Component.translatable("gui.soulsvault.inspect.lore").withStyle(ChatFormatting.GOLD));
             for (int i = 1; i < tooltip.size(); i++) {

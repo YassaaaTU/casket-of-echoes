@@ -1,7 +1,6 @@
 package com.soulsvault.client.gui;
 
 import com.mojang.blaze3d.platform.InputConstants;
-import com.soulsvault.Constants;
 import com.soulsvault.api.EchoSlotType;
 import com.soulsvault.api.SoulsVaultApi;
 import com.soulsvault.client.ClientVaultCache;
@@ -18,6 +17,7 @@ import com.soulsvault.core.BuildEcho;
 import com.soulsvault.core.EquipLoad;
 import com.soulsvault.core.ItemKey;
 import com.soulsvault.core.Keepsakes;
+import com.soulsvault.core.RegistryLookups;
 import com.soulsvault.core.VaultCategory;
 import com.soulsvault.core.VaultEntry;
 import com.soulsvault.core.VaultMeta;
@@ -35,7 +35,6 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
@@ -45,6 +44,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
@@ -57,7 +57,7 @@ import java.util.Map;
 import java.util.function.Predicate;
 
 /**
- * Dual-pane Souls-like Inventory & Casket of Echoes container screen.
+ * Dual-pane Souls-like Inventory &amp; Casket of Echoes container screen.
  * <p>
  * Extends {@link AbstractContainerScreen} over {@link SoulsVaultMenu} to provide:
  * <ul>
@@ -71,9 +71,6 @@ import java.util.function.Predicate;
  * The Vault grid is backed by an incrementally updated {@link VaultGridView}; nothing is re-filtered per tick.
  */
 public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
-    public static final ResourceLocation VAULT_BG_TEXTURE =
-            new ResourceLocation(Constants.MOD_ID, "textures/gui/vault_bg.png");
-
     public static final int WINDOW_WIDTH = 416;
     public static final int WINDOW_HEIGHT = 244;
 
@@ -432,10 +429,9 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
             case XP_LEVELS -> Component.translatable("gui.soulsvault.remote.cost.levels", cost.costAmount());
             case XP_POINTS -> Component.translatable("gui.soulsvault.remote.cost.points", cost.costAmount());
             case ITEM -> {
-                ResourceLocation id = ResourceLocation.tryParse(cost.costItem());
-                Component itemName = id != null
-                        ? BuiltInRegistries.ITEM.get(id).getDescription()
-                        : Component.literal(cost.costItem());
+                Component itemName = RegistryLookups.item(ResourceLocation.tryParse(cost.costItem()))
+                        .map(Item::getDescription)
+                        .orElseGet(() -> Component.literal(cost.costItem()));
                 yield Component.translatable("gui.soulsvault.remote.cost.items", cost.costAmount(), itemName);
             }
             case NONE -> Component.empty();
@@ -902,13 +898,10 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
 
             int borderColor = 0xFF3E3526;
             ItemStack stack = slot.getItem();
-            if (!stack.isEmpty()) {
-                ItemKey key = ItemKey.fromStack(stack);
-                if (key.equals(this.selectedItemKey)) {
-                    borderColor = COLOR_GOLD;
-                } else if (hasFilter && slot.container == playerInventory && this.gridView.matches(key)) {
-                    borderColor = COLOR_GOLD;
-                }
+            // matches() compares in place; a key (an NBT copy) is only built while a filter needs one
+            if (!stack.isEmpty() && (this.selectedItemKey.matches(stack)
+                    || (hasFilter && slot.container == playerInventory && this.gridView.matches(ItemKey.fromStack(stack))))) {
+                borderColor = COLOR_GOLD;
             }
 
             graphics.fill(sx, sy, sx + 18, sy + 18, 0xE60D0B0E);
@@ -1398,7 +1391,7 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
             return;
         }
 
-        int maxStack = Math.max(1, key.getItem().getMaxStackSize());
+        int maxStack = key.getMaxStackSize();
         if (button == 0) {
             if (hasShiftDown()) {
                 // Shift + Left-Click: Quick-withdraw a full stack directly into the player's inventory
@@ -1432,7 +1425,7 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
         if (entry == null || entry.getKey().isEmpty()) {
             return;
         }
-        int maxStack = Math.max(1, entry.getKey().getItem().getMaxStackSize());
+        int maxStack = entry.getKey().getMaxStackSize();
         if (button == 0 && hasShiftDown()) {
             Services.PLATFORM.sendToServer(PacketC2SVaultAction.keepsakeWithdraw(entry.getKey(), maxStack));
         } else if (button == 0) {
@@ -1465,7 +1458,9 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
         } else if (this.menu.getLeftPaneMode() == LeftPaneMode.GEAR_CURIOS
                 && mouseY >= this.topPos + 58 && mouseY < this.topPos + 130
                 && this.menu.getTotalAccessoryPages() > 1) {
+            // Same as the page arrows: the server's menu must page too, or shift-click equipping would pick other slots
             this.menu.setAccessoryPage(this.menu.getAccessoryPage() + step);
+            sendMenuButton(step < 0 ? 4 : 5);
             updateLeftPaneSubControls();
             return true;
         }
@@ -1698,7 +1693,7 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
             VaultEntry entry = getEntry();
             boolean autoRefill = entry != null && entry.isAutoRefill();
             boolean overflow = entry != null && entry.isOverflowDeposit();
-            int target = entry != null ? entry.getRefillTarget() : Math.max(1, this.key.getItem().getMaxStackSize());
+            int target = entry != null ? entry.getRefillTarget() : this.key.getMaxStackSize();
 
             if (mouseY >= this.y + 16 && mouseY < this.y + 28) {
                 Services.PLATFORM.sendToServer(PacketC2SVaultAction.setRefillTarget(this.key, target, !autoRefill, overflow));
@@ -1734,7 +1729,7 @@ public class SoulsVaultScreen extends AbstractContainerScreen<SoulsVaultMenu> {
             VaultEntry entry = getEntry();
             boolean autoRefill = entry != null && entry.isAutoRefill();
             boolean overflow = entry != null && entry.isOverflowDeposit();
-            int target = entry != null ? entry.getRefillTarget() : Math.max(1, this.key.getItem().getMaxStackSize());
+            int target = entry != null ? entry.getRefillTarget() : this.key.getMaxStackSize();
 
             String header = Component.translatable("gui.soulsvault.inspect.refill_target", target).getString();
             graphics.drawString(font, header, this.x + 5, this.y + 4, COLOR_GOLD, true);

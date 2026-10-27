@@ -13,12 +13,16 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.registries.ForgeRegistries;
 
+import javax.annotation.Nullable;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Soft-dependency integration adapter for Epic Fight ({@code epicfight}) and Weapons of Miracle ({@code wom}).
@@ -31,6 +35,11 @@ public final class EpicFightCompat {
     private static final ResourceLocation ATTR_IMPACT = new ResourceLocation(MOD_ID, "impact");
     private static final ResourceLocation ATTR_ARMOR_NEGATION = new ResourceLocation(MOD_ID, "armor_negation");
     private static final ResourceLocation ATTR_MAX_STRIKES = new ResourceLocation(MOD_ID, "max_strikes");
+
+    /** Epic Fight attributes by id; looked up once since the attribute registry is frozen after loading. */
+    private static final Map<ResourceLocation, Optional<Attribute>> ATTRIBUTES = new ConcurrentHashMap<>();
+    /** The no-argument {@code getPassiveSkill} accessor per item capability class, resolved once per class. */
+    private static final Map<Class<?>, Optional<Method>> PASSIVE_SKILL_GETTERS = new ConcurrentHashMap<>();
 
     private static boolean reflectionInitialized = false;
     private static Method getItemStackCapabilityMethod;
@@ -60,6 +69,9 @@ public final class EpicFightCompat {
         }
     }
 
+    /**
+     * Whether Epic Fight treats the item as a weapon (it has impact / max strikes, or a weapon capability).
+     */
     public static boolean isWeapon(ItemStack stack) {
         if (stack == null || stack.isEmpty() || !isLoaded()) {
             return false;
@@ -87,6 +99,9 @@ public final class EpicFightCompat {
         return false;
     }
 
+    /**
+     * Epic Fight stat lines (weight, impact, armor negation, max strikes, innate skill) for the inspection pane.
+     */
     public static List<Component> getInspectionStats(ItemStack stack) {
         if (stack == null || stack.isEmpty() || !isLoaded()) {
             return Collections.emptyList();
@@ -139,7 +154,8 @@ public final class EpicFightCompat {
     }
 
     private static double getEpicFightAttributeValue(ItemStack stack, ResourceLocation attrId, EquipmentSlot slot) {
-        Attribute attr = ForgeRegistries.ATTRIBUTES.getValue(attrId);
+        Attribute attr = ATTRIBUTES.computeIfAbsent(attrId, id -> Optional.ofNullable(ForgeRegistries.ATTRIBUTES.getValue(id)))
+                .orElse(null);
         if (attr == null) {
             return 0.0D;
         }
@@ -155,6 +171,7 @@ public final class EpicFightCompat {
         return sum;
     }
 
+    @Nullable
     private static String extractInnateSkillName(ItemStack stack) {
         CompoundTag tag = stack.getTag();
         if (tag != null) {
@@ -169,19 +186,23 @@ public final class EpicFightCompat {
         if (getItemStackCapabilityMethod != null) {
             try {
                 Object cap = getItemStackCapabilityMethod.invoke(null, stack);
-                if (cap != null) {
-                    for (Method m : cap.getClass().getMethods()) {
-                        if ("getPassiveSkill".equals(m.getName()) && m.getParameterCount() == 0) {
-                            Object skill = m.invoke(cap);
-                            if (skill != null) {
-                                return skill.toString();
-                            }
-                        }
-                    }
+                Method getter = cap != null ? PASSIVE_SKILL_GETTERS.computeIfAbsent(cap.getClass(), EpicFightCompat::findPassiveSkillGetter)
+                        .orElse(null) : null;
+                Object skill = getter != null ? getter.invoke(cap) : null;
+                if (skill != null) {
+                    return skill.toString();
                 }
             } catch (Throwable ignored) {
             }
         }
         return null;
+    }
+
+    private static Optional<Method> findPassiveSkillGetter(Class<?> capabilityClass) {
+        try {
+            return Optional.of(capabilityClass.getMethod("getPassiveSkill"));
+        } catch (NoSuchMethodException e) {
+            return Optional.empty();
+        }
     }
 }
