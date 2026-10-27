@@ -10,6 +10,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraftforge.common.util.LazyOptional;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.items.IItemHandlerModifiable;
@@ -81,6 +82,9 @@ public final class CuriosCompat {
         }
     }
 
+    /**
+     * Whether {@code stack} goes in any Curios / Aether accessory slot.
+     */
     public static boolean isCurio(ItemStack stack) {
         if (stack == null || stack.isEmpty()) {
             return false;
@@ -110,6 +114,9 @@ public final class CuriosCompat {
         return false;
     }
 
+    /**
+     * Whether {@code stack} is tagged for the Curios (or Aether) slot type {@code slotId}.
+     */
     public static boolean canEquipInCurioSlot(String slotId, ItemStack stack) {
         if (stack == null || stack.isEmpty()) {
             return false;
@@ -151,7 +158,7 @@ public final class CuriosCompat {
     }
 
     /**
-     * Collects all live interactive Curios & Aether accessory slots (plus cosmetic Curio slots if requested)
+     * Collects all live interactive Curios &amp; Aether accessory slots (plus cosmetic Curio slots if requested)
      * for the given player.
      */
     public static List<AccessorySlotAccess> getAccessorySlots(Player player, boolean includeCosmetics) {
@@ -211,7 +218,9 @@ public final class CuriosCompat {
         return result;
     }
 
-    @SuppressWarnings("unchecked")
+    /**
+     * Every Curios slot's item, by slot id, for a Build Echo snapshot.
+     */
     public static Map<String, List<ItemKey>> captureCurios(Player player) {
         if (player == null || !isLoaded()) {
             return Collections.emptyMap();
@@ -252,6 +261,11 @@ public final class CuriosCompat {
         return captured;
     }
 
+    /**
+     * Swaps worn Curios with a Build Echo's through the Casket: the current item goes in, the saved one comes out.
+     * A slot is left alone when the saved item is not stored, the current one cannot be stored, or it is cursed with
+     * binding.
+     */
     public static void swapCurios(
             ServerPlayer player,
             PlayerVaultData vaultData,
@@ -304,10 +318,15 @@ public final class CuriosCompat {
                     if (!desiredKey.isEmpty() && vaultData.getCount(desiredKey) <= 0L) {
                         continue;
                     }
+                    if (!currentStack.isEmpty() && !player.isCreative() && EnchantmentHelper.hasBindingCurse(currentStack)) {
+                        continue;
+                    }
 
                     if (!currentStack.isEmpty()) {
                         long accepted = vaultData.deposit(currentKey, currentStack.getCount());
                         if (accepted < currentStack.getCount()) {
+                            // Only part of the stack fit: take it back out so nothing is duplicated
+                            vaultData.withdraw(currentKey, accepted);
                             continue;
                         }
                         itemHandler.setStackInSlot(i, ItemStack.EMPTY);
@@ -378,6 +397,13 @@ public final class CuriosCompat {
             if (this.slotIndex >= 0 && this.slotIndex < this.handler.getSlots()) {
                 this.handler.setStackInSlot(this.slotIndex, stack == null ? ItemStack.EMPTY : stack);
             }
+        }
+
+        @Override
+        public boolean mayPickup(Player player) {
+            // Curse of Binding keeps worn curios on, as in Curios' own slots; cosmetic slots are never bound
+            ItemStack stack = getStack();
+            return this.cosmetic || stack.isEmpty() || player.isCreative() || !EnchantmentHelper.hasBindingCurse(stack);
         }
 
         @Override

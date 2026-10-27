@@ -17,6 +17,7 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.enchantment.EnchantmentHelper;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -523,7 +524,9 @@ public class PlayerVaultData {
                     toWithdraw = Math.min(toWithdraw, Math.max(0, rule.maxCarried() - carried));
                 }
             }
-            toWithdraw = Math.max(0, Services.PLATFORM.postReplenishRefill(player, key, toWithdraw));
+            // Listeners may raise the amount, but never past what the Casket holds (items are inserted before
+            // they are withdrawn, so an unchecked amount would create items)
+            toWithdraw = (int) Math.min(stored, Math.max(0, Services.PLATFORM.postReplenishRefill(player, key, toWithdraw)));
             if (toWithdraw <= 0) {
                 continue;
             }
@@ -699,6 +702,10 @@ public class PlayerVaultData {
 
         // Only swap if desiredKey is either EMPTY (unequip to vault) or available in the vault
         if (!desiredKey.isEmpty() && getCount(desiredKey) <= 0L) {
+            return;
+        }
+        // Curse of Binding keeps the piece on, exactly as the vanilla armor slots do
+        if (!currentStack.isEmpty() && !player.isCreative() && EnchantmentHelper.hasBindingCurse(currentStack)) {
             return;
         }
 

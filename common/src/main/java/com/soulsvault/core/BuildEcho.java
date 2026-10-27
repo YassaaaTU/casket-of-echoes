@@ -1,6 +1,7 @@
 package com.soulsvault.core;
 
 import com.soulsvault.api.EchoSlotType;
+import net.minecraft.SharedConstants;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
@@ -46,8 +47,6 @@ public final class BuildEcho {
 
     /** An item plus the stack size to restore (1 for equipment). */
     public record EchoStack(ItemKey key, int count) {
-        public static final EchoStack EMPTY = new EchoStack(ItemKey.EMPTY, 0);
-
         public EchoStack {
             key = Objects.requireNonNullElse(key, ItemKey.EMPTY);
             count = key.isEmpty() ? 0 : Math.max(1, count);
@@ -121,22 +120,34 @@ public final class BuildEcho {
         this.selectedHotbarSlot = selectedHotbarSlot;
     }
 
+    /**
+     * Name of an unnamed slot ("Echo 1", "Echo 2", ...).
+     */
     public static String defaultName(int index) {
         return "Echo " + (index + 1);
     }
 
+    /**
+     * Trims, drops control and formatting characters, caps the length, and falls back to the default name.
+     */
     private static String sanitizeName(String name, int index) {
-        String trimmed = name == null ? "" : name.trim();
+        String trimmed = name == null ? "" : SharedConstants.filterText(name).trim();
         if (trimmed.isEmpty()) {
             return defaultName(index);
         }
         return trimmed.length() > MAX_NAME_LENGTH ? trimmed.substring(0, MAX_NAME_LENGTH) : trimmed;
     }
 
+    /**
+     * An unnamed slot with nothing saved.
+     */
     public static BuildEcho empty(int index) {
         return new BuildEcho(index, defaultName(index), ItemKey.EMPTY, ItemKey.EMPTY, Map.of(), Map.of());
     }
 
+    /**
+     * Whether nothing at all is saved in this Echo.
+     */
     public boolean isEmpty() {
         if (!this.mainHand.isEmpty() || !this.offHand.isEmpty()) {
             return false;
@@ -183,16 +194,8 @@ public final class BuildEcho {
         return this.armorSlots.getOrDefault(slot, ItemKey.EMPTY);
     }
 
-    public Map<EquipmentSlot, ItemKey> getArmorSlots() {
-        return this.armorSlots;
-    }
-
     public Map<String, List<ItemKey>> getCurioSlots() {
         return this.curioSlots;
-    }
-
-    public Map<String, List<EchoStack>> getExtraSlots() {
-        return this.extraSlots;
     }
 
     public List<EchoStack> getExtraSlots(EchoSlotType type) {
@@ -203,6 +206,9 @@ public final class BuildEcho {
         return this.typeToggles;
     }
 
+    /**
+     * Whether swapping to this Echo restores {@code type}'s slots (the player's toggle, else the type's default).
+     */
     public boolean isTypeEnabled(EchoSlotType type) {
         return this.typeToggles.getOrDefault(type.id().toString(), type.enabledByDefault());
     }
