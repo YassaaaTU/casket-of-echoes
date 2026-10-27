@@ -1,9 +1,6 @@
 {
   "gui.soulsvault.title": "Casket of Echoes",
   "gui.soulsvault.subtitle.inventory": "Inventory & Hotbar",
-  "gui.soulsvault.subtitle.vault": "Stored Echoes",
-  "gui.soulsvault.subtitle.inspect": "Item Lore & Attributes",
-  "gui.soulsvault.subtitle.echoes": "Build Echoes (Loadout Swapper)",
   "gui.soulsvault.category.all": "All Stored Items",
   "gui.soulsvault.category.weapons": "Weapons",
   "gui.soulsvault.category.ranged_ammo": "Ranged & Ammo",
@@ -27,8 +24,6 @@
   "gui.soulsvault.action.quick_deposit": "Deposit Category",
   "gui.soulsvault.action.inspect_toggle": "Inspect",
   "gui.soulsvault.action.grid_toggle": "Vault Grid",
-  "gui.soulsvault.action.echoes_open": "Build Echoes",
-  "gui.soulsvault.action.echoes_close": "Inventory",
   "gui.soulsvault.action.echo_save": "Save",
   "gui.soulsvault.action.echo_load": "Swap",
   "gui.soulsvault.action.cosmetic": "Cosmetics",

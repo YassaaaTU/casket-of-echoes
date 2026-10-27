@@ -20,6 +20,10 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 
+/**
+ * Forge entry point: registers configs, content, networking and event listeners (client ones only on the
+ * client).
+ */
 @Mod(Constants.MOD_ID)
 public class SoulsVaultForge {
 
@@ -41,10 +45,7 @@ public class SoulsVaultForge {
     }
 
     private void onCommonSetup(final FMLCommonSetupEvent event) {
-        event.enqueueWork(() -> {
-            ForgeNetworkHandler.register();
-            FtbQuestsCompat.init();
-        });
+        event.enqueueWork(FtbQuestsCompat::init);
     }
 
     private void onTagsUpdated(final TagsUpdatedEvent event) {

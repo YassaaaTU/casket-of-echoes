@@ -123,10 +123,6 @@ public class PlayerVaultData {
         return this.storage.getMaxStackCapacity();
     }
 
-    public boolean isOverflowOnFullInventory() {
-        return SoulsVaultConfig.isOverflowOnFullInventory();
-    }
-
     public long getCount(ItemKey key) {
         return this.storage.getCount(key);
     }
@@ -149,9 +145,19 @@ public class PlayerVaultData {
 
     // ------------------------------------------------------------------------------------------------ view
 
+    /**
+     * This player's preferences for {@code key}, or the defaults when none are set.
+     */
     public ItemPrefs getPrefs(ItemKey key) {
         ItemPrefs existing = this.prefs.get(key);
         return existing != null ? existing : ItemPrefs.defaultsFor(key);
+    }
+
+    /**
+     * Whether this player has pinned or configured {@code key}.
+     */
+    public boolean hasPrefs(ItemKey key) {
+        return this.prefs.containsKey(key);
     }
 
     /**
@@ -197,16 +203,6 @@ public class PlayerVaultData {
         return entries;
     }
 
-    public List<VaultEntry> getEntriesByCategory(VaultCategory category) {
-        List<VaultEntry> result = new ArrayList<>();
-        for (VaultEntry entry : getEntries()) {
-            if (category.matches(entry.getCategory())) {
-                result.add(entry);
-            }
-        }
-        return result;
-    }
-
     public List<BuildEcho> getBuildEchoes() {
         return Collections.unmodifiableList(this.buildEchoes);
     }
@@ -228,10 +224,6 @@ public class PlayerVaultData {
     }
 
     // ------------------------------------------------------------------------------------------------ echo slots
-
-    public int getEchoSlotUpgrades() {
-        return this.echoSlotUpgrades;
-    }
 
     /**
      * Number of Build Echo slots: base config + Echo Pouches, capped by {@code echoes.maxSlots}.
@@ -280,6 +272,9 @@ public class PlayerVaultData {
         );
     }
 
+    /**
+     * Capacity and sharing summary (on the client, the last synced one).
+     */
     public VaultMeta getMeta() {
         return createMeta("");
     }
@@ -328,7 +323,7 @@ public class PlayerVaultData {
 
     /**
      * Withdraws up to {@code requestedAmount} of {@code key} from the vault into the player's main inventory,
-     * respecting {@link net.minecraft.world.item.Item#getMaxStackSize()} and available inventory space.
+     * respecting the item's stack size and available inventory space.
      *
      * @return total items inserted into the player's inventory
      */
@@ -409,6 +404,11 @@ public class PlayerVaultData {
         return modifiedKeys;
     }
 
+    /**
+     * Flips the favorite pin of {@code key}.
+     *
+     * @return the updated entry, or {@code null} when nothing is stored or pinned anymore
+     */
     @Nullable
     public VaultEntry toggleFavorite(ItemKey key) {
         if (key == null || key.isEmpty()) {
@@ -419,6 +419,11 @@ public class PlayerVaultData {
         return getEntry(key);
     }
 
+    /**
+     * Sets the auto-refill, overflow and carry-cap preferences of {@code key}.
+     *
+     * @return the updated entry, or {@code null} when nothing is stored or pinned anymore
+     */
     @Nullable
     public VaultEntry configureRefill(ItemKey key, boolean autoRefill, int refillTarget, boolean overflowDeposit) {
         if (key == null || key.isEmpty()) {
@@ -438,7 +443,7 @@ public class PlayerVaultData {
     }
 
     /**
-     * Rest &amp; Replenish, specified in Section 4.4 of GEMINI.md:
+     * Rest &amp; Replenish:
      * <ol>
      *   <li>Auto-Sweep Overflow from the player's 36 main inventory slots into the Vault.</li>
      *   <li>Auto-Refill Pinned Items ({@code autoRefill == true}) from the Vault up to {@code refillTarget}, never
@@ -616,11 +621,17 @@ public class PlayerVaultData {
         return echo;
     }
 
+    /**
+     * Renames a Build Echo slot (blank restores the default name).
+     */
     public void renameBuildEcho(int index, String name) {
         BuildEcho echo = getBuildEcho(index);
         putBuildEcho((echo != null ? echo : BuildEcho.empty(index)).withName(name));
     }
 
+    /**
+     * Sets which extra slot groups (by {@link EchoSlotType} id) a Build Echo restores.
+     */
     public void setBuildEchoTypeToggles(int index, Map<String, Boolean> toggles) {
         BuildEcho echo = getBuildEcho(index);
         putBuildEcho((echo != null ? echo : BuildEcho.empty(index)).withTypeToggles(toggles));
@@ -761,6 +772,10 @@ public class PlayerVaultData {
 
     // ------------------------------------------------------------------------------------------------ inventory
 
+    /**
+     * Marks the inventory changed and pushes it to the client right away (both the inventory menu and an open
+     * container).
+     */
     public static void syncPlayerInventory(Player player) {
         player.getInventory().setChanged();
         if (player instanceof ServerPlayer serverPlayer) {
@@ -771,6 +786,9 @@ public class PlayerVaultData {
         }
     }
 
+    /**
+     * How many items matching {@code key} the 36 main inventory slots hold.
+     */
     public static int countInInventory(Inventory inv, ItemKey key) {
         int total = 0;
         for (ItemStack stack : inv.items) {
@@ -789,7 +807,7 @@ public class PlayerVaultData {
         if (key == null || key.isEmpty() || maxAmount <= 0) {
             return 0;
         }
-        int maxStackSize = Math.max(1, key.getItem().getMaxStackSize());
+        int maxStackSize = key.getMaxStackSize();
         int capacity = 0;
 
         for (int i = 0; i < inv.items.size() && capacity < maxAmount; i++) {
@@ -810,7 +828,7 @@ public class PlayerVaultData {
      *   <li>If the item's prefs have {@code overflowDeposit == true} and the pickup would exceed
      *       {@code refillTarget}, only tops up the player's inventory to {@code refillTarget} and routes the
      *       remainder directly into the Vault.</li>
-     *   <li>If the player's inventory cannot fit the full stack and {@link #isOverflowOnFullInventory()} is enabled,
+     *   <li>If the player's inventory cannot fit the full stack and {@code vault.overflowOnFullInventory} is enabled,
      *       inserts what fits into the player's inventory and routes the remainder into the Vault.</li>
      * </ul>
      * Syncs deltas to every viewer and sends an overflow toast when items are routed to the Vault.
@@ -834,7 +852,7 @@ public class PlayerVaultData {
             int carriedCount = countInInventory(inv, key);
             int capRemaining = Math.max(0, itemPrefs.refillTarget() - carriedCount);
             allowedToInventory = getInsertableCapacity(inv, key, Math.min(stackCount, capRemaining));
-        } else if (isOverflowOnFullInventory()) {
+        } else if (SoulsVaultConfig.isOverflowOnFullInventory()) {
             int fitInInventory = getInsertableCapacity(inv, key, stackCount);
             if (fitInInventory >= stackCount) {
                 // Entire stack fits normally in the player's inventory; let vanilla handle it
@@ -875,7 +893,7 @@ public class PlayerVaultData {
 
     /**
      * Inserts up to {@code amount} items of {@code key} into the given player inventory's 36 main slots,
-     * respecting {@link net.minecraft.world.item.Item#getMaxStackSize()}.
+     * respecting the item's stack size.
      *
      * @return the number of items actually inserted
      */
@@ -883,7 +901,7 @@ public class PlayerVaultData {
         if (key == null || key.isEmpty() || amount <= 0) {
             return 0;
         }
-        int maxStackSize = Math.max(1, key.getItem().getMaxStackSize());
+        int maxStackSize = key.getMaxStackSize();
         int remaining = amount;
 
         // Pass 1: Top up existing partial stacks matching key
@@ -912,7 +930,11 @@ public class PlayerVaultData {
 
     // ------------------------------------------------------------------------------------------------ client mirror
 
-    public void replaceAllFromSync(Collection<VaultEntry> syncedEntries, Collection<BuildEcho> syncedEchoes, VaultMeta meta) {
+    /**
+     * Client mirror: replaces everything with the first chunk of a full sync ({@code meta} {@code null} to reset).
+     */
+    public void replaceAllFromSync(Collection<VaultEntry> syncedEntries, Collection<BuildEcho> syncedEchoes,
+                                   @Nullable VaultMeta meta) {
         this.storage.clearFromSync();
         this.prefs.clear();
         appendEntriesFromSync(syncedEntries);
@@ -923,12 +945,18 @@ public class PlayerVaultData {
         this.syncedMeta = meta;
     }
 
+    /**
+     * Client mirror: adds the entries of a later sync chunk.
+     */
     public void appendEntriesFromSync(Collection<VaultEntry> chunkEntries) {
         for (VaultEntry entry : chunkEntries) {
             applyDelta(entry.getKey(), entry);
         }
     }
 
+    /**
+     * Client mirror: updates one entry, or removes it when {@code updatedEntry} is {@code null}.
+     */
     public void applyDelta(ItemKey key, @Nullable VaultEntry updatedEntry) {
         if (key == null || key.isEmpty()) {
             return;
@@ -986,7 +1014,7 @@ public class PlayerVaultData {
             // Pre-party format: counts and prefs were stored together on each entry
             ListTag entriesTag = root.getList(NBT_LEGACY_ENTRIES, Tag.TAG_COMPOUND);
             for (int i = 0; i < entriesTag.size(); i++) {
-                VaultEntry entry = VaultEntry.fromTag(entriesTag.getCompound(i));
+                VaultEntry entry = VaultEntry.fromLegacyTag(entriesTag.getCompound(i));
                 if (entry.getKey().isEmpty()) {
                     continue;
                 }
@@ -1019,6 +1047,9 @@ public class PlayerVaultData {
         this.keepsakes.load(root.getCompound(NBT_KEEPSAKES));
     }
 
+    /**
+     * What a Rest &amp; Replenish moved.
+     */
     public record RestReplenishResult(
             int sweptToVaultCount,
             int refilledToPlayerCount,
@@ -1026,6 +1057,9 @@ public class PlayerVaultData {
     ) {
     }
 
+    /**
+     * What a world pickup did with the Vault; {@code handled} means the pickup event must be cancelled.
+     */
     public record PickupOverflowResult(boolean handled, int insertedToInventory, int sentToVault, int totalConsumed) {
         public static final PickupOverflowResult NONE = new PickupOverflowResult(false, 0, 0, 0);
     }

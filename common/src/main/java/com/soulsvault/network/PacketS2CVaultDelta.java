@@ -19,16 +19,7 @@ public final class PacketS2CVaultDelta {
 
     public PacketS2CVaultDelta(ItemKey key, @Nullable VaultEntry updatedEntry) {
         this.key = Objects.requireNonNullElse(key, ItemKey.EMPTY);
-        this.updatedEntry = updatedEntry != null && updatedEntry.shouldRetain() ? updatedEntry.copy() : null;
-    }
-
-    public ItemKey getKey() {
-        return this.key;
-    }
-
-    @Nullable
-    public VaultEntry getUpdatedEntry() {
-        return this.updatedEntry;
+        this.updatedEntry = updatedEntry != null && updatedEntry.shouldRetain() ? updatedEntry : null;
     }
 
     public void encode(FriendlyByteBuf buf) {

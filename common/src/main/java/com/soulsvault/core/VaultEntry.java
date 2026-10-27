@@ -7,7 +7,11 @@ import net.minecraft.world.item.ItemStack;
 import java.util.Objects;
 
 /**
- * Stored stack record inside a player's Casket of Echoes vault.
+ * One stored item as a player sees it: the count from the Casket's {@link VaultStorage} combined with that
+ * player's own {@link ItemPrefs} (pins, refill target, overflow).
+ * <p>
+ * An immutable snapshot used for syncing and display; the authoritative data lives in {@link VaultStorage} and
+ * {@link PlayerVaultData}.
  */
 public final class VaultEntry {
     private static final String NBT_KEY = "Key";
@@ -19,23 +23,18 @@ public final class VaultEntry {
     private static final String NBT_LAST_UPDATED = "LastUpdatedEpoch";
 
     private final ItemKey key;
-    private long count;
-    private boolean autoRefill;
-    private int refillTarget;
-    private boolean overflowDeposit;
-    private boolean favorite;
-    private long lastUpdatedEpoch;
+    private final long count;
+    private final boolean autoRefill;
+    private final int refillTarget;
+    private final boolean overflowDeposit;
+    private final boolean favorite;
+    private final long lastUpdatedEpoch;
 
+    /**
+     * An entry with default preferences (used for Keepsakes, which have no pins).
+     */
     public VaultEntry(ItemKey key, long count) {
-        this(
-                key,
-                Math.max(0L, count),
-                false,
-                Math.max(1, key.getItem().getMaxStackSize()),
-                false,
-                false,
-                System.currentTimeMillis()
-        );
+        this(key, count, false, key.getMaxStackSize(), false, false, System.currentTimeMillis());
     }
 
     public VaultEntry(
@@ -56,18 +55,6 @@ public final class VaultEntry {
         this.lastUpdatedEpoch = lastUpdatedEpoch;
     }
 
-    public VaultEntry copy() {
-        return new VaultEntry(
-                this.key,
-                this.count,
-                this.autoRefill,
-                this.refillTarget,
-                this.overflowDeposit,
-                this.favorite,
-                this.lastUpdatedEpoch
-        );
-    }
-
     public ItemKey getKey() {
         return this.key;
     }
@@ -76,6 +63,9 @@ public final class VaultEntry {
         return VaultCategory.classify(this.key);
     }
 
+    /**
+     * A fresh one-item stack for rendering and tooltips.
+     */
     public ItemStack createDisplayStack() {
         return this.key.toSingleStack();
     }
@@ -84,106 +74,50 @@ public final class VaultEntry {
         return this.count;
     }
 
-    public void setCount(long count) {
-        this.count = Math.max(0L, count);
-        touch();
-    }
-
-    public void addCount(long delta) {
-        if (delta > 0) {
-            if (Long.MAX_VALUE - this.count < delta) {
-                this.count = Long.MAX_VALUE;
-            } else {
-                this.count += delta;
-            }
-        } else if (delta < 0) {
-            this.count = Math.max(0L, this.count + delta);
-        }
-        touch();
-    }
-
     public boolean isAutoRefill() {
         return this.autoRefill;
-    }
-
-    public void setAutoRefill(boolean autoRefill) {
-        this.autoRefill = autoRefill;
-        touch();
     }
 
     public int getRefillTarget() {
         return this.refillTarget;
     }
 
-    public void setRefillTarget(int refillTarget) {
-        this.refillTarget = Math.max(1, refillTarget);
-        touch();
-    }
-
     public boolean isOverflowDeposit() {
         return this.overflowDeposit;
-    }
-
-    public void setOverflowDeposit(boolean overflowDeposit) {
-        this.overflowDeposit = overflowDeposit;
-        touch();
     }
 
     public boolean isFavorite() {
         return this.favorite;
     }
 
-    public void setFavorite(boolean favorite) {
-        this.favorite = favorite;
-        touch();
-    }
-
     public long getLastUpdatedEpoch() {
         return this.lastUpdatedEpoch;
     }
 
-    public void setLastUpdatedEpoch(long lastUpdatedEpoch) {
-        this.lastUpdatedEpoch = lastUpdatedEpoch;
-    }
-
-    public void touch() {
-        this.lastUpdatedEpoch = System.currentTimeMillis();
+    /**
+     * Whether a client should keep showing this entry: something is stored, or a pin keeps the empty entry visible.
+     */
+    public boolean shouldRetain() {
+        return this.count > 0L || this.favorite || this.autoRefill || this.overflowDeposit;
     }
 
     /**
-     * Returns true if this entry has pinned settings (favorite, auto-refill, or overflow deposit)
-     * that should keep the entry record alive even if its stored count drops to 0.
+     * Reads an entry from the pre-party save format, where counts and preferences were stored together. Only used
+     * to migrate old worlds; current saves go through {@link VaultStorage} and {@link ItemPrefs}.
      */
-    public boolean hasPersistentSettings() {
-        return this.favorite || this.autoRefill || this.overflowDeposit;
-    }
-
-    public boolean shouldRetain() {
-        return this.count > 0L || hasPersistentSettings();
-    }
-
-    public CompoundTag toTag() {
-        CompoundTag tag = new CompoundTag();
-        tag.put(NBT_KEY, this.key.toTag());
-        tag.putLong(NBT_COUNT, this.count);
-        tag.putBoolean(NBT_AUTO_REFILL, this.autoRefill);
-        tag.putInt(NBT_REFILL_TARGET, this.refillTarget);
-        tag.putBoolean(NBT_OVERFLOW_DEPOSIT, this.overflowDeposit);
-        tag.putBoolean(NBT_FAVORITE, this.favorite);
-        tag.putLong(NBT_LAST_UPDATED, this.lastUpdatedEpoch);
-        return tag;
-    }
-
-    public static VaultEntry fromTag(CompoundTag tag) {
+    public static VaultEntry fromLegacyTag(CompoundTag tag) {
         ItemKey key = ItemKey.fromTag(tag.getCompound(NBT_KEY));
-        long count = tag.getLong(NBT_COUNT);
-        boolean autoRefill = tag.getBoolean(NBT_AUTO_REFILL);
-        int defaultTarget = key.isEmpty() ? 1 : Math.max(1, key.getItem().getMaxStackSize());
-        int refillTarget = tag.contains(NBT_REFILL_TARGET) ? tag.getInt(NBT_REFILL_TARGET) : defaultTarget;
-        boolean overflowDeposit = tag.getBoolean(NBT_OVERFLOW_DEPOSIT);
-        boolean favorite = tag.getBoolean(NBT_FAVORITE);
+        int refillTarget = tag.contains(NBT_REFILL_TARGET) ? tag.getInt(NBT_REFILL_TARGET) : key.getMaxStackSize();
         long lastUpdated = tag.contains(NBT_LAST_UPDATED) ? tag.getLong(NBT_LAST_UPDATED) : System.currentTimeMillis();
-        return new VaultEntry(key, count, autoRefill, refillTarget, overflowDeposit, favorite, lastUpdated);
+        return new VaultEntry(
+                key,
+                tag.getLong(NBT_COUNT),
+                tag.getBoolean(NBT_AUTO_REFILL),
+                refillTarget,
+                tag.getBoolean(NBT_OVERFLOW_DEPOSIT),
+                tag.getBoolean(NBT_FAVORITE),
+                lastUpdated
+        );
     }
 
     public void toNetwork(FriendlyByteBuf buf) {

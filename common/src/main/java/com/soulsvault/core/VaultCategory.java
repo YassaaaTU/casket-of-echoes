@@ -55,6 +55,11 @@ public enum VaultCategory {
     MATERIALS("gui.soulsvault.category.materials"),
     KEY_LORE("gui.soulsvault.category.key_lore");
 
+    /**
+     * Upper bound on cached classifications. Every distinct NBT (each durability value of a tool) is its own key,
+     * so the cache is dropped and rebuilt rather than allowed to grow for the whole session.
+     */
+    private static final int MAX_CACHED = 8192;
     private static final Map<ItemKey, VaultCategory> CLASSIFICATION_CACHE = new ConcurrentHashMap<>();
 
     private final String translationKey;
@@ -69,34 +74,41 @@ public enum VaultCategory {
         );
     }
 
-    public TagKey<Item> getOverrideTag() {
-        return this.overrideTag;
-    }
-
-    public String getTranslationKey() {
-        return this.translationKey;
-    }
-
     public Component getDisplayName() {
         return Component.translatable(this.translationKey);
     }
 
+    /**
+     * Whether this tab shows items of {@code itemCategory} ({@link #ALL} shows everything).
+     */
     public boolean matches(VaultCategory itemCategory) {
         return this == ALL || this == itemCategory;
     }
 
+    /**
+     * Whether this tab shows {@code stack}.
+     */
     public boolean matches(ItemStack stack) {
         return this == ALL || classify(stack) == this;
     }
 
+    /**
+     * Whether this tab shows {@code key}.
+     */
     public boolean matches(ItemKey key) {
         return this == ALL || classify(key) == this;
     }
 
+    /**
+     * Forgets every cached classification; call when item tags change (datapack reload, joining a server).
+     */
     public static void clearCache() {
         CLASSIFICATION_CACHE.clear();
     }
 
+    /**
+     * The tab {@code stack} belongs to.
+     */
     public static VaultCategory classify(ItemStack stack) {
         if (stack == null || stack.isEmpty()) {
             return MATERIALS;
@@ -104,9 +116,19 @@ public enum VaultCategory {
         return classify(ItemKey.fromStack(stack));
     }
 
+    /**
+     * The tab {@code key} belongs to: pack override tags first, then the built-in rules (cached).
+     */
     public static VaultCategory classify(ItemKey key) {
         if (key == null || key.isEmpty()) {
             return MATERIALS;
+        }
+        VaultCategory cached = CLASSIFICATION_CACHE.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        if (CLASSIFICATION_CACHE.size() >= MAX_CACHED) {
+            CLASSIFICATION_CACHE.clear();
         }
         return CLASSIFICATION_CACHE.computeIfAbsent(key, VaultCategory::computeCategory);
     }
@@ -150,12 +172,12 @@ public enum VaultCategory {
             return CURIOS_RELICS;
         }
 
-        // 5. CONSUMABLES: Item#isEdible(), PotionItem, MilkBucketItem, #soulsvault:consumables
-        if (isConsumable(stack, item)) {
+        // 5. CONSUMABLES: Item#isEdible(), PotionItem, MilkBucketItem (#soulsvault:consumables matched above)
+        if (isConsumable(item)) {
             return CONSUMABLES;
         }
 
-        // 6. KEY_LORE: Rarity.EPIC non-equipment, written books, boss trophies/souls, #soulsvault:key_items
+        // 6. KEY_LORE: Rarity.EPIC non-equipment, written books (#soulsvault:key_items matched above)
         if (isKeyOrLore(stack, item)) {
             return KEY_LORE;
         }
@@ -234,20 +256,14 @@ public enum VaultCategory {
         return stack.getTags().anyMatch(tagKey -> "curios".equals(tagKey.location().getNamespace()));
     }
 
-    private static boolean isConsumable(ItemStack stack, Item item) {
+    private static boolean isConsumable(Item item) {
         if (item.isEdible() || item instanceof MilkBucketItem) {
             return true;
         }
-        if (item instanceof PotionItem && !(item instanceof ThrowablePotionItem)) {
-            return true;
-        }
-        return stack.is(Constants.CONSUMABLES_TAG);
+        return item instanceof PotionItem && !(item instanceof ThrowablePotionItem);
     }
 
     private static boolean isKeyOrLore(ItemStack stack, Item item) {
-        if (stack.is(Constants.KEY_ITEMS_TAG)) {
-            return true;
-        }
         if (item instanceof WrittenBookItem || item instanceof WritableBookItem) {
             return true;
         }

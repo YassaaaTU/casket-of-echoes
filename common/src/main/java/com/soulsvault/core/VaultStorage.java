@@ -30,6 +30,8 @@ public final class VaultStorage {
     private final String id;
     private final Map<ItemKey, Stored> items = new LinkedHashMap<>();
     private int expansions;
+    /** Sum of all counts, or {@code -1} until recomputed after a change (the party HUD asks every few ticks). */
+    private long totalCache = -1L;
     @Nullable
     private final CovenantLedger ledger;
     private Runnable dirtyListener = () -> {
@@ -72,6 +74,9 @@ public final class VaultStorage {
         return this.id;
     }
 
+    /**
+     * Called on every change, so the owning saved data is written on the next save.
+     */
     public void setDirtyListener(Runnable listener) {
         this.dirtyListener = listener != null ? listener : () -> {
         };
@@ -84,6 +89,9 @@ public final class VaultStorage {
         this.dirtyListener.run();
     }
 
+    /**
+     * How many of {@code key} are stored (0 when none).
+     */
     public long getCount(ItemKey key) {
         Stored stored = key == null ? null : this.items.get(key);
         return stored != null ? stored.count : 0L;
@@ -94,18 +102,31 @@ public final class VaultStorage {
         return stored != null ? stored.updated : 0L;
     }
 
+    /**
+     * Every stored kind of item (read-only view).
+     */
     public Set<ItemKey> keys() {
         return Collections.unmodifiableSet(this.items.keySet());
     }
 
+    /**
+     * Number of distinct items stored.
+     */
     public int uniqueEntries() {
         return this.items.size();
     }
 
+    /**
+     * Total items stored across every kind (saturating at {@link Long#MAX_VALUE}).
+     */
     public long totalItems() {
-        long total = 0L;
-        for (Stored stored : this.items.values()) {
-            total = saturatingAdd(total, stored.count);
+        long total = this.totalCache;
+        if (total < 0L) {
+            total = 0L;
+            for (Stored stored : this.items.values()) {
+                total = saturatingAdd(total, stored.count);
+            }
+            this.totalCache = total;
         }
         return total;
     }
@@ -118,6 +139,9 @@ public final class VaultStorage {
         return this.expansions;
     }
 
+    /**
+     * Applies one Reliquary Shard.
+     */
     public void addExpansion() {
         this.expansions++;
         markDirty();
@@ -133,15 +157,9 @@ public final class VaultStorage {
         }
     }
 
-    public boolean removeExpansion() {
-        if (this.expansions <= 0) {
-            return false;
-        }
-        this.expansions--;
-        markDirty();
-        return true;
-    }
-
+    /**
+     * How many of each item this storage holds (config plus expansions).
+     */
     public long getMaxStackCapacity() {
         SoulsVaultConfig.Upgrades upgrades = SoulsVaultConfig.upgrades();
         long bonus = upgrades.capacityPerExpansion() * (long) this.expansions;
@@ -204,6 +222,9 @@ public final class VaultStorage {
         depositUnchecked(key, amount, null);
     }
 
+    /**
+     * Same as {@link #depositUnchecked(ItemKey, long)}, recording {@code actor} as the owner in a Covenant Casket.
+     */
     public void depositUnchecked(ItemKey key, long amount, @Nullable UUID actor) {
         if (key != null && !key.isEmpty() && amount > 0L) {
             add(key, amount);
@@ -222,6 +243,7 @@ public final class VaultStorage {
             stored.count = saturatingAdd(stored.count, amount);
             stored.updated = now;
         }
+        this.totalCache = -1L;
         markDirty();
     }
 
@@ -250,6 +272,7 @@ public final class VaultStorage {
         if (stored.count <= 0L) {
             this.items.remove(key);
         }
+        this.totalCache = -1L;
         if (this.ledger != null) {
             this.ledger.onWithdraw(key, withdrawn, actor, remaining);
         }
@@ -257,9 +280,13 @@ public final class VaultStorage {
         return withdrawn;
     }
 
+    /**
+     * Deletes everything stored (a player chose to override their Casket).
+     */
     public void clear() {
         if (!this.items.isEmpty()) {
             this.items.clear();
+            this.totalCache = -1L;
             if (this.ledger != null) {
                 this.ledger.clearShares();
             }
@@ -279,10 +306,15 @@ public final class VaultStorage {
         } else {
             this.items.put(key, new Stored(count, updated));
         }
+        this.totalCache = -1L;
     }
 
+    /**
+     * Client-side mirror reset before a full sync.
+     */
     public void clearFromSync() {
         this.items.clear();
+        this.totalCache = -1L;
     }
 
     public CompoundTag save(CompoundTag root) {
@@ -307,6 +339,7 @@ public final class VaultStorage {
 
     public void load(CompoundTag root) {
         this.items.clear();
+        this.totalCache = -1L;
         this.expansions = Math.max(0, root.getInt(NBT_EXPANSIONS));
         ListTag list = root.getList(NBT_ITEMS, Tag.TAG_COMPOUND);
         for (int i = 0; i < list.size(); i++) {

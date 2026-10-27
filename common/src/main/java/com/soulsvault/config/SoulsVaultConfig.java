@@ -38,6 +38,9 @@ public final class SoulsVaultConfig {
         ALWAYS,
         NEVER;
 
+        /**
+         * The effective value for a party whose leader chose {@code leaderChoice}.
+         */
         public boolean resolve(boolean leaderChoice) {
             return switch (this) {
                 case LEADER_CHOICE -> leaderChoice;
@@ -47,6 +50,9 @@ public final class SoulsVaultConfig {
         }
     }
 
+    /**
+     * Whether the Casket replaces the vanilla inventory, and whether the Vault then works away from Rest Points.
+     */
     public record Inventory(boolean fullInventoryReplacement, boolean allowRemoteVaultInFullInventory) {
         public static final Inventory DEFAULT = new Inventory(true, true);
     }
@@ -60,6 +66,9 @@ public final class SoulsVaultConfig {
         public static final Vault DEFAULT = new Vault(true, Constants.DEFAULT_MAX_STACK_CAPACITY, 0, 65536, false);
     }
 
+    /**
+     * Rest Point reach and which actions need one.
+     */
     public record RestPoints(
             double reachBlocks,
             boolean replenishRequiresRestPoint,
@@ -67,16 +76,18 @@ public final class SoulsVaultConfig {
             boolean replenishOnWakeUp
     ) {
         public static final RestPoints DEFAULT = new RestPoints(6.0D, false, false, true);
-
-        public double reachSqr() {
-            return this.reachBlocks * this.reachBlocks;
-        }
     }
 
+    /**
+     * Build Echo slots every player has, and the most Echo Pouches can raise them to.
+     */
     public record Echoes(int baseSlots, int maxSlots) {
         public static final Echoes DEFAULT = new Echoes(Constants.MAX_BUILD_ECHOES, 10);
     }
 
+    /**
+     * Vestige Moth cost and Spectral Casket lifetime.
+     */
     public record FieldAccess(int vestigeMothXpLevelCost, int spectralCasketLifetimeSeconds) {
         public static final FieldAccess DEFAULT = new FieldAccess(1, 60);
     }
@@ -94,6 +105,9 @@ public final class SoulsVaultConfig {
         }
     }
 
+    /**
+     * What opening the Vault away from a Rest Point costs, once per Casket session.
+     */
     public record RemoteAccess(RemoteCostType costType, int costAmount, String costItem) {
         public static final RemoteAccess DEFAULT = new RemoteAccess(RemoteCostType.NONE, 1, "minecraft:ender_pearl");
 
@@ -102,14 +116,23 @@ public final class SoulsVaultConfig {
         }
     }
 
+    /**
+     * What each Reliquary Shard adds to a Casket, and how many may be applied.
+     */
     public record Upgrades(long capacityPerExpansion, int uniqueEntriesPerExpansion, int maxExpansions) {
         public static final Upgrades DEFAULT = new Upgrades(1000L, 25, 10);
     }
 
+    /**
+     * Equip Load capacity and the optional overload slowdown.
+     */
     public record EquipLoad(boolean enabled, double baseCapacity, boolean slowdownWhenOverloaded, double overloadedSpeedPenalty) {
         public static final EquipLoad DEFAULT = new EquipLoad(true, 60.0D, false, 0.3D);
     }
 
+    /**
+     * Party provider, size and the server rules for each leader option.
+     */
     public record Party(
             PartyProviderType provider,
             boolean builtinPartiesEnabled,
@@ -268,6 +291,9 @@ public final class SoulsVaultConfig {
     private SoulsVaultConfig() {
     }
 
+    /**
+     * The current settings (local config on the server, the server's synced copy on clients).
+     */
     public static Settings get() {
         return settings;
     }
@@ -326,7 +352,7 @@ public final class SoulsVaultConfig {
 
     /**
      * When {@code true}, opening the player inventory ({@code E} key in Survival/Adventure)
-     * replaces the vanilla InventoryScreen with the Souls-like Casket & Inventory UI.
+     * replaces the vanilla InventoryScreen with the Souls-like Casket &amp; Inventory UI.
      */
     public static boolean isFullInventoryReplacement() {
         return settings.inventory().fullInventoryReplacement();

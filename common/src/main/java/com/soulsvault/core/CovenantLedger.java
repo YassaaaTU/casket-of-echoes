@@ -60,23 +60,28 @@ public final class CovenantLedger {
         return this.memberSince.containsKey(player);
     }
 
+    /**
+     * Members in join order.
+     */
     public Set<UUID> members() {
         return Collections.unmodifiableSet(this.memberSince.keySet());
     }
 
+    /**
+     * Records a member (keeping their original join time if they are already one).
+     */
     public void addMember(UUID player, long joinedAtMillis) {
         this.memberSince.putIfAbsent(player, joinedAtMillis);
         markDirty();
     }
 
+    /**
+     * Forgets a member and their upgrade credit; their items must have been handled first.
+     */
     public void removeMember(UUID player) {
         this.memberSince.remove(player);
         this.credits.remove(player);
         markDirty();
-    }
-
-    public long memberSince(UUID player) {
-        return this.memberSince.getOrDefault(player, Long.MAX_VALUE);
     }
 
     /**
@@ -91,6 +96,9 @@ public final class CovenantLedger {
         markDirty();
     }
 
+    /**
+     * Highest Covenant expansion level the member has earned.
+     */
     public int creditOf(UUID player) {
         return this.credits.getOrDefault(player, 0);
     }
@@ -150,11 +158,17 @@ public final class CovenantLedger {
         markDirty();
     }
 
+    /**
+     * Forgets who owns what (the Casket was emptied).
+     */
     public void clearShares() {
         this.shares.clear();
         markDirty();
     }
 
+    /**
+     * Forgets everything (the Covenant dissolved).
+     */
     public void clear() {
         this.shares.clear();
         this.memberSince.clear();

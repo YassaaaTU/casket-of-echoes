@@ -59,10 +59,6 @@ public final class CategoryTabButton extends AbstractWidget {
         return this.category;
     }
 
-    public boolean isSelected() {
-        return this.selected;
-    }
-
     public void setSelected(boolean selected) {
         this.selected = selected;
     }

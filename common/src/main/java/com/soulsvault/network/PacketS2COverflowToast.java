@@ -19,18 +19,6 @@ public final class PacketS2COverflowToast {
         this.isReplenish = isReplenish;
     }
 
-    public ItemStack getDisplayStack() {
-        return this.displayStack;
-    }
-
-    public int getCountSentToVault() {
-        return this.countSentToVault;
-    }
-
-    public boolean isReplenish() {
-        return this.isReplenish;
-    }
-
     public void encode(FriendlyByteBuf buf) {
         buf.writeItem(this.displayStack);
         buf.writeVarInt(this.countSentToVault);

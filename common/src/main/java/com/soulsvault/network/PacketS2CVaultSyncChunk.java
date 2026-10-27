@@ -13,7 +13,8 @@ import java.util.List;
 
 /**
  * Server-to-Client chunked vault synchronization packet.
- * Never transmits more than {@link Constants#MAX_SYNC_CHUNK_SIZE} (100) {@link VaultEntry} records per packet.
+ * Never transmits more than {@link Constants#MAX_SYNC_CHUNK_SIZE} (100) {@link VaultEntry} records per packet; the
+ * first chunk of a sync also carries the Build Echoes and replaces the client's copy, later chunks append.
  */
 public final class PacketS2CVaultSyncChunk {
     private final int chunkIndex;
@@ -39,22 +40,6 @@ public final class PacketS2CVaultSyncChunk {
         this.entries = entries != null ? List.copyOf(entries) : Collections.emptyList();
         this.echoes = echoes != null ? List.copyOf(echoes) : Collections.emptyList();
         this.meta = meta != null ? meta : VaultMeta.DEFAULT;
-    }
-
-    public int getChunkIndex() {
-        return this.chunkIndex;
-    }
-
-    public int getTotalChunks() {
-        return this.totalChunks;
-    }
-
-    public List<VaultEntry> getEntries() {
-        return this.entries;
-    }
-
-    public List<BuildEcho> getEchoes() {
-        return this.echoes;
     }
 
     public void encode(FriendlyByteBuf buf) {
