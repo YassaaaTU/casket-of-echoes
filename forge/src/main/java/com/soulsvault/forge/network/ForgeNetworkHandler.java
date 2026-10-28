@@ -51,7 +51,7 @@ import java.util.function.Function;
  * validate everything themselves.
  */
 public final class ForgeNetworkHandler {
-    private static final String PROTOCOL_VERSION = "7";
+    private static final String PROTOCOL_VERSION = "1";
     /**
      * Byte budget for one vault sync chunk, half of the 1 MiB custom payload limit, so stacks with large NBT (skins,
      * affixes) spread over more packets instead of disconnecting the player.

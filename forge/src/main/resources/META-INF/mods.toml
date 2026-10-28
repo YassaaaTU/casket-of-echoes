@@ -1,6 +1,7 @@
 modLoader="javafml"
 loaderVersion="${forge_loader_version_range}"
 license="${license}"
+issueTrackerURL="https://github.com/YassaaaTU/casket-of-echoes/issues"
 
 [[mods]]
 modId="${mod_id}"
@@ -8,6 +9,11 @@ version="${mod_version}"
 displayName="${mod_name}"
 authors="${mod_author}"
 description='''${description}'''
+displayURL="https://github.com/YassaaaTU/casket-of-echoes"
+logoFile="soulsvault_logo.png"
+# Pixel art: keep it sharp in the mods list
+logoBlur=false
+credits="Made by DeceasedG for The Casket of Reveries modpack, developed with the help of AI coding assistants."
 
 [[dependencies.${mod_id}]]
 modId="forge"
