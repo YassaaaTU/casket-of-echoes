@@ -48,3 +48,9 @@ Desktop.ini
 local.properties
 *.tmp
 *.bak
+
+# AI coding agent instructions (kept local)
+GEMINI.md
+CLAUDE.md
+AGENTS.md
+.claude/
