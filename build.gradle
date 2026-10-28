@@ -47,6 +47,13 @@ subprojects {
         it.options.addBooleanOption('Xdoclint:all,-missing', true)
     }
 
+    // The MIT notice must travel with every copy of the mod, so each jar carries it
+    tasks.withType(Jar).configureEach {
+        from(rootProject.file('LICENSE')) {
+            rename { "LICENSE_${project.mod_id}" }
+        }
+    }
+
     processResources {
         def expandProps = [
                 'version'                    : project.version,
